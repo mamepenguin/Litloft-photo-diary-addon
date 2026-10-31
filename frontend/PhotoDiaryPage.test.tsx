@@ -403,7 +403,7 @@ describe("SPEC-PD-001: calendar", () => {
   it("a day without photos is plain text, not a button", async () => {
     await settled();
     await day("10月3日 5枚");
-    const cell = screen.getByText("20", { exact: true });
+    const cell = screen.getByText("4", { exact: true });
     expect(cell.closest("button")).toBeNull();
   });
 
