@@ -968,6 +968,38 @@ describe("SPEC-PD-001 / I6: saved state and fresh starts", () => {
     expect(loadState("family")?.list?.loaded).toBeGreaterThanOrEqual(80);
   });
 
+  it("I6: leaving the page saves the scroll position the list had while it was still on screen", async () => {
+    // A browser clamps the scroll position once the list has left the
+    // document, so the position is only readable until then.
+    const onScreen = () => document.querySelector("[data-testid=file-grid]") !== null;
+    Object.defineProperty(window, "scrollY", { configurable: true, get: () => (onScreen() ? 700 : 0) });
+    try {
+      const { unmount } = await settled("?month=2026-10&date=2026-10-20");
+      await waitFor(() => expect(renderedIds()).toHaveLength(40));
+      await loadMore();
+      await waitFor(() => expect(renderedIds()).toHaveLength(80));
+      unmount();
+      expect(loadState("family")?.list).toEqual({ loaded: 80, scrollY: 700 });
+    } finally {
+      delete (window as any).scrollY;
+    }
+  });
+
+  it("I6: leaving the map page saves the scroll position of the point's list panel", async () => {
+    Object.defineProperty(Element.prototype, "scrollTop", {
+      configurable: true,
+      get(this: Element) {
+        return this.isConnected ? 500 : 0;
+      },
+      set() {},
+    });
+    const { unmount } = await openMap();
+    await clickPoint(allIds());
+    await waitFor(() => expect(renderedIds()).toHaveLength(40));
+    unmount();
+    expect(loadState("family")?.list?.scrollY).toBe(500);
+  });
+
   it("changing drive is a fresh start on the new drive; the old drive's state stays under its own key", async () => {
     saveState("family", { zoom: 5 });
     const page = await settled("?date=2026-10-03");

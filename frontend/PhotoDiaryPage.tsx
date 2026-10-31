@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { Images } from "lucide-react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useTranslations } from "next-intl";
@@ -94,7 +94,10 @@ function Session({ drive }: { drive: string }) {
     if (Object.keys(state).length > 0) saveState(drive, state);
   }, [drive]);
 
-  useEffect(() => {
+  // A layout cleanup, because it runs before the removed tree leaves the
+  // document. A passive one runs after, when the page is already shorter and
+  // the scroll position has been clamped to 0.
+  useLayoutEffect(() => {
     window.addEventListener("pagehide", flush);
     return () => {
       window.removeEventListener("pagehide", flush);
