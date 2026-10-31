@@ -1497,17 +1497,15 @@ describe("the scope line: the drive and its photo count on either view", () => {
     await waitFor(() => expect(scope()).toBe("family · 7枚"));
   });
 
-  it("a count answered for a drive the viewer has left is discarded", async () => {
+  it("a count that answers an earlier entry to the map does not overwrite a newer one", async () => {
     const slow = deferred<ReturnType<typeof months>>();
     vi.mocked(api.fetchMonths).mockImplementationOnce(() => slow.promise);
-    const { again } = await openMap("?view=map");
-    h.drive.current = "work";
-    window.history.replaceState(null, "", "/drive/work/addons/photo_diary?view=map");
-    again();
-    await flush();
-    await act(async () => slow.resolve(months()));
-    await waitFor(() => expect(screen.getByText(/^work/).textContent).toBe("work · 1枚"));
-    expect(screen.queryByText(/^family/)).toBeNull();
+    await openMap("?view=map");
+    await click(tab("カレンダー"));
+    await click(tab("地図"));
+    await waitFor(() => expect(scope()).toBe("family · 142枚"));
+    await act(async () => slow.resolve({ months: [{ month: "2026-10", count: 7 }], undated_count: 0 }));
+    expect(scope()).toBe("family · 142枚");
   });
 
   it("a 404 on the count takes the page away like any other data route", async () => {

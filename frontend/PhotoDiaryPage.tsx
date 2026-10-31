@@ -66,7 +66,8 @@ function Session({ drive }: { drive: string }) {
 
   // The calendar reports the count while it is the view; on the map nothing
   // else would, so the page reads it itself on each entry. What was last
-  // known stays on screen meanwhile and when the read fails.
+  // known stays on screen meanwhile and when the read fails. An answer to an
+  // earlier entry is dropped, so a slow one cannot overwrite a newer count.
   const onMap = url.view === "map";
   useEffect(() => {
     if (!onMap) return;
