@@ -1444,3 +1444,76 @@ describe("loading and refetching states of what a decision uses", () => {
     expect(h.scroll.calls).not.toContain(640);
   });
 });
+
+describe("the scope line: the drive and its photo count on either view", () => {
+  const months = () => ({ months: data.family.months, undated_count: data.family.undated_count });
+  const scope = () => screen.getByText(/^family/).textContent;
+
+  it("shows the count on the map view reached directly, and on reload", async () => {
+    await openMap("?view=map");
+    await waitFor(() => expect(scope()).toBe("family · 142枚"));
+  });
+
+  it("keeps the count when the map is entered again from the calendar, and again when Back returns to it", async () => {
+    await openMap("?view=map");
+    await waitFor(() => expect(scope()).toBe("family · 142枚"));
+    await click(tab("カレンダー"));
+    await waitFor(() => expect(scope()).toBe("family · 142枚"));
+    await click(tab("地図"));
+    expect(scope()).toBe("family · 142枚");
+    await goBack();
+    await goBack();
+    await flush();
+    expect(scope()).toBe("family · 142枚");
+  });
+
+  it("shows the drive alone while the count is loading, never 0", async () => {
+    const slow = deferred<ReturnType<typeof months>>();
+    vi.mocked(api.fetchMonths).mockImplementationOnce(() => slow.promise);
+    await openMap("?view=map");
+    expect(scope()).toBe("family");
+    await act(async () => slow.resolve(months()));
+    await waitFor(() => expect(scope()).toBe("family · 142枚"));
+  });
+
+  it("shows the drive alone when the count cannot be read", async () => {
+    vi.mocked(api.fetchMonths).mockRejectedValueOnce(new Error("offline"));
+    await openMap("?view=map");
+    await flush();
+    expect(scope()).toBe("family");
+    expect(screen.getAllByRole("tab")).toHaveLength(2);
+  });
+
+  it("keeps the last count while the map's entry rereads it, and takes the new one", async () => {
+    await openMap("?view=map");
+    await waitFor(() => expect(scope()).toBe("family · 142枚"));
+    await click(tab("カレンダー"));
+    const slow = deferred<ReturnType<typeof months>>();
+    vi.mocked(api.fetchMonths).mockImplementationOnce(() => slow.promise);
+    await click(tab("地図"));
+    await flush();
+    expect(scope()).toBe("family · 142枚");
+    await act(async () => slow.resolve({ months: [{ month: "2026-10", count: 7 }], undated_count: 0 }));
+    await waitFor(() => expect(scope()).toBe("family · 7枚"));
+  });
+
+  it("a count answered for a drive the viewer has left is discarded", async () => {
+    const slow = deferred<ReturnType<typeof months>>();
+    vi.mocked(api.fetchMonths).mockImplementationOnce(() => slow.promise);
+    const { again } = await openMap("?view=map");
+    h.drive.current = "work";
+    window.history.replaceState(null, "", "/drive/work/addons/photo_diary?view=map");
+    again();
+    await flush();
+    await act(async () => slow.resolve(months()));
+    await waitFor(() => expect(screen.getByText(/^work/).textContent).toBe("work · 1枚"));
+    expect(screen.queryByText(/^family/)).toBeNull();
+  });
+
+  it("a 404 on the count takes the page away like any other data route", async () => {
+    vi.mocked(api.fetchMonths).mockRejectedValue(apiError(404));
+    vi.mocked(api.fetchPoints).mockImplementation(() => new Promise(() => {}));
+    await settled("?view=map");
+    expect(await screen.findByText("このドライブでは使えません")).toBeInTheDocument();
+  });
+});

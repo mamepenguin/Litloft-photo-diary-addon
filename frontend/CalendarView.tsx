@@ -13,6 +13,7 @@ import { MonthPicker } from "./MonthPicker";
 import { PhotoList, type ListPosition } from "./PhotoList";
 import { useWide } from "./useWide";
 import { formatListDate, formatMonth } from "./lib/dates";
+import { photoTotal } from "./lib/total";
 import type { PageUrl } from "./lib/pageUrl";
 import type { FetchIds } from "./usePagedPhotos";
 
@@ -84,7 +85,7 @@ export function CalendarView({
         setMonths(result);
         setMonthsFailed(false);
         report("months", true);
-        onTotal(result.months.reduce((sum, m) => sum + m.count, result.undated_count));
+        onTotal(photoTotal(result));
       },
       (error: unknown) => {
         if (mine !== monthsRequest.current) return;

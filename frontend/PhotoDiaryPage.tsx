@@ -13,6 +13,9 @@ import { MapView, type MapRestore } from "./MapView";
 import type { ListPosition } from "./PhotoList";
 import { buildPageQuery, parsePageUrl, type PageUrl } from "./lib/pageUrl";
 import { clearState, loadState, saveState, type SavedState } from "./lib/savedState";
+import { fetchMonths } from "./api";
+import { isNotFound } from "./lib/errors";
+import { photoTotal } from "./lib/total";
 import { PAGE_SIZE } from "./usePagedPhotos";
 
 type View = PageUrl["view"];
@@ -60,6 +63,26 @@ function Session({ drive }: { drive: string }) {
   useEffect(() => {
     setSeen((current) => (current[url.view] ? current : { ...current, [url.view]: true }));
   }, [url.view]);
+
+  // The calendar reports the count while it is the view; on the map nothing
+  // else would, so the page reads it itself on each entry. What was last
+  // known stays on screen meanwhile and when the read fails.
+  const onMap = url.view === "map";
+  useEffect(() => {
+    if (!onMap) return;
+    let current = true;
+    fetchMonths(drive).then(
+      (months) => {
+        if (current) setTotal(photoTotal(months));
+      },
+      (error: unknown) => {
+        if (current && isNotFound(error)) setNotAvailable(true);
+      },
+    );
+    return () => {
+      current = false;
+    };
+  }, [drive, onMap]);
 
   // A URL with no query is a fresh start however it was reached.
   const [initial] = useState(() => {
