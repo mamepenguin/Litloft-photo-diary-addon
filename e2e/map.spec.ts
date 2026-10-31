@@ -28,6 +28,21 @@ test.describe("I7: a point lists every photo it stands for and no other", () => 
     expect([...h.clicks.at(-1)!].sort()).toEqual(["a-0", "a-1", "a-2", "a-3", "a-4"]);
   });
 
+  test("SPEC-PD-002 I7: two photos 14 m apart are two points at zoom 19", async ({ page }) => {
+    const h = await prepare(page);
+    await page.goto(FIXTURE_PATH);
+    // 0.000126 degrees of latitude is about 58 px at zoom 19, beyond the cluster radius.
+    await createMap(page, {
+      points: [...same("up", 1, 35.6812, 139.7671), ...same("down", 1, 35.6812 - 0.000126, 139.7671)],
+      center: A,
+      zoom: 19,
+    });
+    await settle(page, h);
+    await clickCentre(page);
+    await expect.poll(() => h.clicks.length).toBeGreaterThan(0);
+    expect(h.clicks.at(-1)).toEqual(["up-0"]);
+  });
+
   test("SPEC-PD-002 I7: a lone photo is a point of one", async ({ page }) => {
     const h = await prepare(page);
     await page.goto(FIXTURE_PATH);
