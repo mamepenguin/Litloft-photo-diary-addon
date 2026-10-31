@@ -68,12 +68,13 @@ The viewer opens the sidebar row **Photo Diary**, which goes to
 
 **Map (SPEC-PD-002)**
 
-1. Switching to the map view fetches `GET /map-config` and `GET /points`, then fits the map
-   to all points, zooming in no further than 15. The map's maximum zoom is 19, and points keep
+1. Switching to the map view fetches `GET /map-config` and `GET /points`. The first time a map
+   is created with no saved state, it fits all points, zooming in no further than 15. The map's maximum zoom is 19, and points keep
    merging at every zoom up to it, so photos with identical coordinates are always one point.
 2. Points merge and split as the viewer zooms. A point standing for more than one photo
-   shows its count.
-3. Clicking a point opens its list. It does not zoom. Clicking the map elsewhere does nothing.
+   shows its count, drawn as an HTML marker, so the map style has no glyph server.
+3. Clicking a point opens its list. It does not zoom. Clicking the map elsewhere, or the point
+   whose list is already open, does nothing.
 4. The list has one section per capture date, newest date first. Within a section, photos are
    in the order `/points` returned them: oldest first. Located photos with no capture date
    form a last section, by filename. Each section heading shows the date and its count.
@@ -94,16 +95,22 @@ The viewer opens the sidebar row **Photo Diary**, which goes to
   undated list that becomes empty closes. A day list that becomes empty shows its empty message.
 - Going back from a photo returns to the same view with the same month, day, or map centre,
   zoom and open list, with the list loaded at least as far as before and scrolled to where it
-  was. The restored list is fetched again, so a photo trashed meanwhile is gone.
+  was. A restored list is fetched again and treated like one after `onRefresh`: a point's list is
+  reduced to what is still in `/points`, and closes if nothing is left.
 - The view, month and day are in the URL query (`view`, `month`, `date`, `undated`). Everything
   else is in session storage under a key that includes the drive: map centre and zoom, the open
   point's file ids, and each list's loaded count and scroll position. A reload in the same tab
-  restores it. Opening the page with no query, which is what the sidebar row does, clears it and
-  starts fresh, so the map then fits all points with no list open. A shared link to `view=map`
-  in a new tab does the same. If saving fails, Back simply starts fresh.
-- History: the view switch, pressing a day or the undated entry, closing a list, and a section
-  heading link each add an entry. Previous, next and the month picker replace the current one, so
-  Back does not step through months. Navigation does not reload the page.
+  restores it. A URL with no query always means a fresh start, however it was reached (the sidebar
+  row, Back to it, a reload of it): the saved state for the drive is cleared. A shared link to
+  `view=map` in a new tab finds no saved state and fits all points. If saving fails, Back simply
+  starts fresh.
+- History: the view switch, pressing a day or the undated entry, closing a calendar list, and a
+  section heading link each add an entry. Previous, next and the month picker replace the current
+  one, so Back does not step through months. Opening and closing a point's list change nothing in
+  the URL and add no entry. A list closed because it became empty replaces the current entry and
+  drops `undated`. Navigation does not reload the page.
+- Changing drive is a fresh start on the new drive. Saved state for the old drive stays under its
+  own key.
 
 ### API
 
@@ -118,7 +125,7 @@ except `/assets`.
 | `/photos?undated=true&limit&offset` | `{file_ids: [], total}`, ordered by filename, then id |
 | `/points` | `{points: [{file_id, lat, lon, taken_at}]}`; dated photos first, ordered as `/photos?date`, then undated ones, ordered as `/photos?undated`. `taken_at` is `datetime_original` for a dated photo and `null` for an undated one |
 | `/map-config` | `{tile_url, attribution}` |
-| `/assets/{file}` | The bundled MapLibre files, with no drive header and no data |
+| `/assets/{file}` | One bundled MapLibre file. `file` is a flat name from the list of files in `backend/assets/`, each carrying the MapLibre version in its name; any other name is 404. Answers `Cache-Control: public, max-age=31536000, immutable`, since a new version is a new name |
 
 `limit` defaults to 40 and may be 1 to 100, the most `POST /api/files/batch/get` accepts.
 `offset` defaults to 0. `/photos` takes exactly one of `date` and `undated=true`. A malformed
@@ -144,13 +151,16 @@ combination are 422. A real month or date with no photos is a 200 with an empty 
 
 | Where | What happens |
 |---|---|
-| Missing `X-Lit-Drive` | 400 |
-| Unknown or locked drive | 404, the same answer for both |
-| Policy has the addon off for the drive | 404 on every route |
+| Missing `X-Lit-Drive` on a data route | 400 |
+| Unknown or locked drive on a data route | 404, the same answer for both |
+| Policy has the addon off for the drive | 404 on every data route. `/assets` takes no drive and is unaffected |
 | The page is opened on a locked drive or with the policy off | The core's host route draws its own 404 page, because `/api/addons/status` drops the addon; no addon code runs |
-| An addon call answers 404 while the page is open (locked or changed meanwhile) | The page shows the not-available message and no retry |
+| A data route answers 404 while the page is open (locked or changed meanwhile) | The not-available message replaces the whole page, both views, with no retry. It lasts until the page is opened again |
 | `maplibre-gl` fails to load | The map view shows the load error with a retry |
-| A refetch fails over a loaded list | The loaded list stays, with the load error and a retry above it |
+| A refetch fails over a loaded list, grid or map | What is drawn stays, with the load error and a retry above it |
+| A refetched `/points` is empty with a map already drawn | The map is removed and the empty message shown |
+| Reading a point's members from the map fails on click | The list opens with the load error and a retry |
+| A core refactor breaks an import the addon uses | Frontend: `docker compose up --build` fails and the running version is kept. Backend: the core logs it and skips the addon. `README.md` gives the recovery: move `addons/photo_diary` away and rebuild, or check out the last core commit its CI passed on |
 | Any other failure of an initial fetch, including `batch/get` | That view or list shows the load error with a retry; the other view still works. The map view needs both `/map-config` and `/points`, and a failure of either fails the view |
 | A later page of a list fails | The loaded photos stay, with a retry at the end of the list |
 | The drive has no dated photos | The calendar shows its empty message, and the undated entry when there are undated photos |
@@ -175,6 +185,10 @@ The page is stateless on the server. In the browser:
 
 - Entering a view refetches its counts or points, which is when new photos appear. Switching
   views does not refetch a list left open; `onRefresh` and a restore do.
+- Map: loading the library, then drawn; or library load failed (retry returns to loading); or WebGL
+  unavailable, which is final for the page. The tile notice is on or off, by the rule in Failure
+  cases, while drawn.
+- Not-available is final for the page: no trigger leaves it.
 - Of overlapping requests, only the latest applies. A response for month A arriving after the
   viewer moved to month B is discarded, and so is one for a drive the viewer has left.
 - Back from a calendar day reached by a section heading returns to the map with its list open.
@@ -242,8 +256,11 @@ and the files are a public library; it serves only names from a fixed list, neve
   in the main checkout, and the addon's path is listed in `.git/info/exclude` so `git add -A` in the
   core cannot pick it up.
 - WebGL cannot run in jsdom, so vitest covers the list grouping as a pure function and the map with
-  MapLibre mocked. A Playwright spec in this repository covers what only a browser can show: I7, I10
-  and the visible attribution, with the tile server intercepted so CI never contacts it.
+  MapLibre mocked. What only a browser can show (I7, I10, the visible attribution) is covered by a
+  Playwright suite in `e2e/` with its own config: Chromium opens a fixture page that bundles the
+  addon's map module and the real MapLibre files, and `page.route` answers `/points`, `/map-config`
+  and tiles from generated data, so CI never contacts a tile server. The API's own properties are
+  pytest against a real database. R-5 runs the whole page once on a full stack.
 
 ### 8. Error behavior
 
@@ -259,6 +276,10 @@ the core's request logging; a 500 is logged by the core.
 | No located photos | 位置情報のある写真はありません | No photos with a location |
 | Tile failure | 地図を読み込めません | Map tiles could not be loaded |
 | No WebGL | この環境では地図を表示できません | The map cannot be shown on this device |
+| View switch | カレンダー / 地図 | Calendar / Map |
+| Previous, next month | 前の月 / 次の月 | Previous month / Next month |
+| Month picker | 月を選ぶ | Choose month |
+| Close a list | 閉じる | Close |
 
 ### 9. User-visible behavior
 
@@ -270,7 +291,8 @@ the core's request logging; a 500 is logged by the core.
   addon declares no `policy_features`: its `index` is the only switch. When the addon is not
   checked out, nothing appears.
 - Dates are formatted for the viewer's locale without shifting the day, with year, month, day and
-  weekday in list headings.
+  weekday in list headings, followed by the count (ja: 2026年10月3日(土) 5枚, en: Sat, Oct 3, 2026 ·
+  5 photos).
 - The calendar week starts on Sunday in every locale.
 - A photo with a capture date and a capture place appears in both views. With only a date, it
   is in the calendar only. With only a place, it is on the map and in the undated list. With
@@ -279,16 +301,17 @@ the core's request logging; a 500 is logged by the core.
 - A configured attribution stays visible on the map at every width.
 - Undated entry and section label: ja 撮影日なし, en No capture date.
 - Text is in `ja` and `en`. No emoji; icons are lucide.
-- Layout, control labels and the loading appearance follow `DESIGN.md` and are agreed in a Design
+- Layout and the loading appearance follow `DESIGN.md` and are agreed in a Design
   Artifact after this spec's approval and before implementation. The agreed artifact is recorded in
   this repository's `docs/reviews/`. This spec fixes behaviour, not layout.
 
 ### 10. Non-functional
 
-- Size: the personal-tool scale of up to 50,000 photos on a drive. `/calendar/*` and `/points`
-  are computed per request without a cache, and each answers within 1 second at that size on the
-  development machine, measured once before merge. `/points` returns all located photos because
-  the browser does the clustering.
+- Size: the personal-tool scale of up to 50,000 photos on a drive. `/calendar/*`, `/photos` and
+  `/points` are computed per request without a cache, and each answers within 1 second at that size
+  on the development machine. `/points` returns all located photos because the browser does the
+  clustering, and the map draws 50,000 points within 3 seconds in Chromium. Both are measured once
+  before merge, with generated rows in a test database.
 - Privacy: coordinates go only to a browser allowed to open the drive, which the core's `/exif`
   route already permits. A tile request's URL carries only `z/x/y`, so the server learns which map
   area is being viewed and never receives a photo's coordinates, id or name. It also sees the
@@ -312,9 +335,10 @@ All in this repository (`mamepenguin/Litloft-photo-diary-addon`, default branch 
   variables. This takes the place of the core's addon, API and configuration pages, none of which
   changes.
 - `docs/specs/photo-diary.md`, `docs/reviews/`.
-- `.github/workflows/ci.yml`: builds `Dockerfile.test` against the core's `develop`, then in a core
-  checkout runs `setup-addons.sh`, `vitest run src/addons/photo_diary`, `tsc`, and the e2e spec. A
-  coverage floor is set to the measured coverage.
+- `.github/workflows/ci.yml`: on push, pull request and weekly, because the core's CI never sees
+  this addon. It builds `Dockerfile.test` against the core's `develop`, then in a core checkout runs
+  `setup-addons.sh`, `merge-addon-messages`, `vitest run src/addons/photo_diary`, `tsc`, eslint on the
+  addon's files, and the e2e suite. A coverage floor is set to the measured coverage.
 
 Read from the core and not changed: `app.models` (`File`, `FileExif`, `active_file_filter`),
 `app.auth`, `app.config`, `POST /api/files/batch/get`, `/api/addons/status`, `FileGrid`,
@@ -340,13 +364,13 @@ I5. No route returns or counts a file from a drive other than the one named by `
 
 I6. Going back from a photo restores the view, month, day or map position and open list it was opened from; state saved on one drive is never restored on another, and a response for a month or drive the viewer has left is discarded.
 
-I7. Clicking a point lists every photo that point stands for and no other, including several photos with identical coordinates at zoom 19 and a point standing for more than 100 photos; after a refresh, a photo no longer in `/points`, such as one moved to another drive, is gone from the list.
+I7. Clicking a point lists every photo that point stands for and no other, including several photos with identical coordinates at zoom 19 and a point standing for more than 100 photos; after a refresh or a restore, a photo no longer in `/points`, such as one moved to another drive, is gone from the list.
 
 I8. Photos from one place taken on different dates are in separate sections, newest date first, and a section's photos are in the same order as `/photos?date` for that date.
 
 I9. A photo with no capture place, with coordinates of exactly 0,0, or out of range, is not on the map. A photo with a capture place and no capture date is on the map, in the last section of its list.
 
-I10. No tile request is made while only the calendar view has been opened or when the drive has no located photos, and a tile request's URL is the configured URL with only `z`, `x` and `y` filled in, and its `Referer` is at most the page's origin.
+I10. No tile request is made while only the calendar view has been opened or when the drive has no located photos; a tile request's URL is the configured URL with only `z`, `x` and `y` filled in, and its `Referer` is at most the page's origin; and the map contacts no other outside host.
 
 ## Checked, no action
 
