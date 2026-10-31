@@ -11,6 +11,7 @@ import { LoadError } from "./LoadError";
 import { MonthGrid } from "./MonthGrid";
 import { MonthPicker } from "./MonthPicker";
 import { PhotoList, type ListPosition } from "./PhotoList";
+import { useWide } from "./useWide";
 import { formatListDate, formatMonth } from "./lib/dates";
 import type { PageUrl } from "./lib/pageUrl";
 import type { FetchIds } from "./usePagedPhotos";
@@ -43,6 +44,7 @@ export function CalendarView({
 }: Props) {
   const t = useTranslations("photoDiary");
   const locale = useLocale();
+  const { ref, wide } = useWide<HTMLDivElement>();
 
   const [months, setMonths] = useState<Months | null>(null);
   const [monthsFailed, setMonthsFailed] = useState(false);
@@ -155,7 +157,7 @@ export function CalendarView({
   const onListResult = useCallback((ok: boolean) => report("list", ok), [report]);
 
   return (
-    <div className="@container px-4 pb-6">
+    <div ref={ref} data-wide={wide} className="group/diary px-4 pb-6">
       {failures.size > 0 && <LoadError onRetry={refresh} />}
 
       {monthsFailed && <LoadError onRetry={refresh} />}
@@ -165,8 +167,8 @@ export function CalendarView({
       )}
 
       {months !== null && (
-        <div className="grid gap-6 @3xl:grid-cols-[minmax(0,26rem)_minmax(0,1fr)] @3xl:items-start">
-          <div className="grid gap-3 [grid-template-areas:'bar'_'grid'_'undated'] @3xl:grid-cols-1">
+        <div className="grid gap-6 group-data-[wide=true]/diary:grid-cols-[minmax(0,26rem)_minmax(0,1fr)] group-data-[wide=true]/diary:items-start">
+          <div className="grid gap-3 [grid-template-areas:'bar'_'grid'_'undated'] group-data-[wide=true]/diary:grid-cols-[minmax(0,1fr)_auto] group-data-[wide=true]/diary:[grid-template-areas:'bar_undated'_'grid_grid']">
             <div className="flex items-center gap-1 [grid-area:bar]">
               {month && (
                 <>

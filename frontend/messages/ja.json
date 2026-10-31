@@ -28,7 +28,6 @@
       "dayLabel": "{date} {count}枚"
     },
     "list": {
-      "count": "{count}枚",
       "headingCount": "{count}枚"
     }
   }

@@ -28,7 +28,6 @@
       "dayLabel": "{date}, {count, plural, one {# photo} other {# photos}}"
     },
     "list": {
-      "count": "{count, plural, one {# photo} other {# photos}}",
       "headingCount": "· {count, plural, one {# photo} other {# photos}}"
     }
   }

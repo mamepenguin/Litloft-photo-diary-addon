@@ -9,6 +9,7 @@ import { isNotFound } from "./lib/errors";
 import { LoadError } from "./LoadError";
 import { PhotoList, type ListPosition } from "./PhotoList";
 import { SectionedGrids } from "./SectionedGrids";
+import { useWide } from "./useWide";
 import { groupSections } from "./lib/sections";
 import { createPhotoMap, WebGLUnavailableError, type PhotoMap } from "./map/createPhotoMap";
 import type { FetchIds } from "./usePagedPhotos";
@@ -37,7 +38,7 @@ type Props = {
 
 const PANEL_CLASS =
   "absolute inset-x-0 bottom-0 z-10 max-h-[60%] rounded-t-xl border-t border-bg-border bg-bg-primary p-4 " +
-  "@3xl:static @3xl:max-h-none @3xl:w-[22rem] @3xl:shrink-0 @3xl:rounded-none @3xl:border-l @3xl:border-t-0";
+  "group-data-[wide=true]/diary:static group-data-[wide=true]/diary:max-h-none group-data-[wide=true]/diary:w-[22rem] group-data-[wide=true]/diary:shrink-0 group-data-[wide=true]/diary:rounded-none group-data-[wide=true]/diary:border-l group-data-[wide=true]/diary:border-t-0";
 
 function sameMembers(open: string[] | null, ids: string[]): boolean {
   if (open === null || open.length !== ids.length) return false;
@@ -62,6 +63,7 @@ export function MapView({
   onNotAvailable,
 }: Props) {
   const t = useTranslations("photoDiary");
+  const { ref, wide } = useWide<HTMLDivElement>();
 
   const [phase, setPhase] = useState<Phase>("loading");
   const [points, setPoints] = useState<Point[] | null>(null);
@@ -245,7 +247,7 @@ export function MapView({
   const showMap = phase === "creating" || phase === "ready";
 
   return (
-    <div className="@container px-4 pb-6">
+    <div ref={ref} data-wide={wide} className="group/diary px-4 pb-6">
       {refreshFailed && <LoadError onRetry={refresh} />}
       {phase === "failed" && <LoadError onRetry={retryLoad} />}
       {phase === "libFailed" && <LoadError onRetry={retryLoad} />}
