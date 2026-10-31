@@ -27,3 +27,15 @@ The artifact is private to its owner. What it fixes:
 
 "A set URL with an unset attribution shows none": `/map-config` returns `attribution: ""`, since the
 field is a string in every other case.
+
+## Size measurement, 2026-11-01
+
+measurement:
+at: 63e2083
+by: agent
+machine: Apple M3 Max, Docker Desktop for the backend, Chromium with software GL for the map
+data: 50,000 generated `files` and `file_exif` rows in a test database (1 in 50 trashed, 1 in 20 without a capture date, 60% located, two thirds of those in 300 clusters of about 1 km); 120 months, 2,000 undated photos. The map: 50,000 generated points, a third of them at random places in the world and the rest in the 300 clusters.
+backend: pytest in the `Dockerfile.test` image, five requests after a warm-up, median in ms (the worst of the five was within 3 ms of it): `/calendar/months` 63, `/calendar/days?month=` 29, `/photos?date=&limit=40` 53, `/photos?undated=true&limit=40` 50, `/photos?undated=true&limit=100&offset=2000` 49, `/points` 159 (3,059 KiB). Each is inside 1 second.
+map: `createPhotoMap` resolved in 68 to 88 ms over three runs, and the first count label stood 617 to 1,100 ms after the call. Inside 3 seconds.
+selection: giving one photo to `setSelected` at 50,000 points drew its accent after 429 to 438 ms. The selection rebuilds the points source, which is what keeps the accent on the point that stands for exactly the list's photos at any zoom.
+not measured: a browser other than Chromium, a real GPU, a drive on a network share.
