@@ -69,9 +69,8 @@ export function CalendarView({
   const haveDaysFor = useRef<string | null>(null);
 
   const noDatedPhotos = months !== null && months.months.length === 0;
-  const month = noDatedPhotos
-    ? null
-    : (url.month ?? (months ? (months.months[0]?.month ?? null) : null));
+  const month =
+    months === null || noDatedPhotos ? null : (url.month ?? months.months[0]?.month ?? null);
 
   useEffect(() => {
     if (!active) return;

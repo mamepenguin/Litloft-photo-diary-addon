@@ -1295,3 +1295,124 @@ describe("SPEC-PD-002 failure cases: map", () => {
     expect(screen.queryByRole("button", { name: "閉じる" })).toBeNull();
   });
 });
+
+// ---------------------------------------------------------------- loading and refetching
+
+describe("SPEC-PD-002 failure cases: reading a point's members", () => {
+  it("a failed read opens the list with the load error and a retry that reads the point again", async () => {
+    await openMap();
+    const retry = vi.fn();
+    await act(async () => h.mapOptions.current!.onPointError(new Error("leaves"), retry));
+    expect(await screen.findByText("読み込めませんでした")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "閉じる" })).toBeInTheDocument();
+    expect(renderedIds()).toEqual([]);
+    await click(screen.getByRole("button", { name: "再試行" }));
+    expect(retry).toHaveBeenCalledTimes(1);
+    await clickPoint(point([0, 1]));
+    await waitFor(() => expect(renderedIds()).toEqual(["a0", "a1"]));
+    expect(screen.queryByText("読み込めませんでした")).toBeNull();
+  });
+
+  it("the error list replaces an open list, and its close control closes it", async () => {
+    await openMap();
+    await clickPoint(point([0, 1]));
+    await waitFor(() => expect(renderedIds()).toHaveLength(2));
+    await act(async () => h.mapOptions.current!.onPointError(new Error("leaves"), vi.fn()));
+    expect(renderedIds()).toEqual([]);
+    await click(screen.getByRole("button", { name: "閉じる" }));
+    expect(screen.queryByText("読み込めませんでした")).toBeNull();
+  });
+});
+
+describe("loading and refetching states of what a decision uses", () => {
+  it("with no drive yet the header draws and nothing is fetched", async () => {
+    h.drive.current = null;
+    const page = renderPage("");
+    await flush();
+    expect(screen.getByRole("heading", { level: 1 })).toBeInTheDocument();
+    expect(screen.queryByRole("tab")).toBeNull();
+    expect(api.fetchMonths).not.toHaveBeenCalled();
+    h.drive.current = "family";
+    page.again();
+    await flush();
+    await day("10月3日 5枚");
+    expect(api.fetchMonths).toHaveBeenCalledWith("family");
+  });
+
+  it.each([
+    ["a date", "?date=2026-10-03", () => data.family.photos["2026-10-03"]],
+    ["undated", "?undated=true", () => data.family.photos.undated],
+  ])("while the months are loading, %s in the URL opens no list and asks for no days", async (_n, search, expected) => {
+    const slow = deferred<{ months: { month: string; count: number }[]; undated_count: number }>();
+    vi.mocked(api.fetchMonths).mockImplementationOnce(() => slow.promise);
+    await settled(search);
+    expect(api.fetchDays).not.toHaveBeenCalled();
+    expect(api.fetchPhotos).not.toHaveBeenCalled();
+    expect(screen.queryByRole("button", { name: "前の月" })).toBeNull();
+    expect(renderedIds()).toEqual([]);
+    await act(async () => slow.resolve({ months: data.family.months, undated_count: 3 }));
+    await waitFor(() => expect(renderedIds()).toEqual(expected()));
+  });
+
+  it("while a month's days are loading the grid has no day buttons, and the open day's list still loads", async () => {
+    const slow = deferred<{ days: { date: string; count: number }[] }>();
+    vi.mocked(api.fetchDays).mockImplementationOnce(() => slow.promise);
+    await settled("?date=2026-10-03");
+    await waitFor(() => expect(renderedIds()).toHaveLength(5));
+    expect(screen.queryAllByRole("button", { name: /^\d+月\d+日/ })).toEqual([]);
+    await act(async () => slow.resolve({ days: data.family.days["2026-10"] }));
+    expect(await day("10月3日 5枚")).toHaveAttribute("aria-pressed", "true");
+  });
+
+  it("while a list's first page is loading its heading names the date and no count", async () => {
+    const slow = deferred<{ file_ids: string[]; total: number }>();
+    await settled();
+    await day("10月3日 5枚");
+    vi.mocked(api.fetchPhotos).mockImplementationOnce(() => slow.promise);
+    await click(screen.getByRole("button", { name: "10月3日 5枚" }));
+    expect(bodyText()).toMatch(/2026年10月3日\(土\)/);
+    expect(bodyText()).not.toMatch(/2026年10月3日\(土\)\s*\d+枚/);
+    expect(screen.queryByText("この日の写真はありません")).toBeNull();
+    await act(async () => slow.resolve({ file_ids: data.family.photos["2026-10-03"], total: 5 }));
+    await waitFor(() => expect(bodyText()).toMatch(/2026年10月3日\(土\)\s*5枚/));
+  });
+
+  it("while the months are refetched, the undated entry and its open list stay", async () => {
+    await settled();
+    await click(await screen.findByRole("button", { name: /撮影日なし/ }));
+    await waitFor(() => expect(renderedIds()).toHaveLength(3));
+    const slow = deferred<{ months: { month: string; count: number }[]; undated_count: number }>();
+    vi.mocked(api.fetchMonths).mockImplementationOnce(() => slow.promise);
+    await click(screen.getAllByText("mock-refresh")[0]);
+    await flush();
+    expect(renderedIds()).toEqual(["u0", "u1", "u2"]);
+    expect(screen.getByRole("button", { name: /撮影日なし/ })).toBeInTheDocument();
+    await act(async () => slow.resolve({ months: data.family.months, undated_count: 3 }));
+    expect(renderedIds()).toEqual(["u0", "u1", "u2"]);
+  });
+
+  it("while /points is refetched on re-entry the map and its open list stay, and the answer then reduces the list", async () => {
+    await openMap();
+    await clickPoint(point([0, 1]));
+    await waitFor(() => expect(renderedIds()).toEqual(["a0", "a1"]));
+    await click(tab("カレンダー"));
+    const slow = deferred<{ points: Point[] }>();
+    vi.mocked(api.fetchPoints).mockImplementationOnce(() => slow.promise);
+    await click(tab("地図"));
+    await flush();
+    expect(renderedIds()).toEqual(["a0", "a1"]);
+    expect(h.handles[0].destroy).not.toHaveBeenCalled();
+    expect(mapModule.createPhotoMap).toHaveBeenCalledTimes(1);
+    await act(async () => slow.resolve({ points: data.family.points.filter((p) => p.file_id !== "a1") }));
+    await waitFor(() => expect(renderedIds()).toEqual(["a0"]));
+  });
+
+  it("a list position saved from the map is not applied to a calendar list", async () => {
+    saveState("family", { list: { loaded: 80, scrollY: 640 }, listView: "map" });
+    await settled("?month=2026-10&date=2026-10-20");
+    await waitFor(() => expect(renderedIds()).toHaveLength(40));
+    await flush();
+    expect(renderedIds()).toHaveLength(40);
+    expect(h.scroll.calls).not.toContain(640);
+  });
+});
