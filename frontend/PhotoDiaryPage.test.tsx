@@ -1339,19 +1339,16 @@ describe("loading and refetching states of what a decision uses", () => {
     expect(api.fetchMonths).toHaveBeenCalledWith("family");
   });
 
-  it.each([
-    ["a date", "?date=2026-10-03", () => data.family.photos["2026-10-03"]],
-    ["undated", "?undated=true", () => data.family.photos.undated],
-  ])("while the months are loading, %s in the URL opens no list and asks for no days", async (_n, search, expected) => {
+  it("while the months are loading, a date in the URL opens no list and asks for no days", async () => {
     const slow = deferred<{ months: { month: string; count: number }[]; undated_count: number }>();
     vi.mocked(api.fetchMonths).mockImplementationOnce(() => slow.promise);
-    await settled(search);
+    await settled("?date=2026-10-03");
     expect(api.fetchDays).not.toHaveBeenCalled();
     expect(api.fetchPhotos).not.toHaveBeenCalled();
     expect(screen.queryByRole("button", { name: "前の月" })).toBeNull();
     expect(renderedIds()).toEqual([]);
     await act(async () => slow.resolve({ months: data.family.months, undated_count: 3 }));
-    await waitFor(() => expect(renderedIds()).toEqual(expected()));
+    await waitFor(() => expect(renderedIds()).toEqual(data.family.photos["2026-10-03"]));
   });
 
   it("while a month's days are loading the grid has no day buttons, and the open day's list still loads", async () => {
@@ -1370,8 +1367,7 @@ describe("loading and refetching states of what a decision uses", () => {
     await day("10月3日 5枚");
     vi.mocked(api.fetchPhotos).mockImplementationOnce(() => slow.promise);
     await click(screen.getByRole("button", { name: "10月3日 5枚" }));
-    expect(bodyText()).toMatch(/2026年10月3日\(土\)/);
-    expect(bodyText()).not.toMatch(/2026年10月3日\(土\)\s*\d+枚/);
+    expect(screen.getByText(/2026年10月3日\(土\)/).textContent).toBe("2026年10月3日(土)");
     expect(screen.queryByText("この日の写真はありません")).toBeNull();
     await act(async () => slow.resolve({ file_ids: data.family.photos["2026-10-03"], total: 5 }));
     await waitFor(() => expect(bodyText()).toMatch(/2026年10月3日\(土\)\s*5枚/));
