@@ -225,6 +225,11 @@ function buildStyle(options: PhotoMapOptions) {
   };
 }
 
+// Re-selecting what is already selected would redraw the source, which ends
+// in another idle and so loops.
+const keyOf = (feature: Feature) =>
+  JSON.stringify([feature.geometry.coordinates, feature.properties?.cluster_id, feature.properties?.point_count, feature.properties?.id]);
+
 const POINT_LAYERS = ["clusters", "singles"];
 const HIT_SLOP = 4;
 
@@ -265,6 +270,7 @@ export async function createPhotoMap(
 
   const labels = new Map<number, MarkerLike>();
   let selectedAt: LngLat | null = null;
+  let selectedKey = "";
   let tileFailed = false;
   let reportedFailing = false;
   let destroyed = false;
@@ -278,11 +284,20 @@ export async function createPhotoMap(
       { layers: POINT_LAYERS },
     );
 
+  // A rendered feature's properties have no prototype, and a source given
+  // such an object draws nothing, with no error.
   const select = (feature: Feature) => {
     selectedAt = feature.geometry.coordinates;
+    selectedKey = keyOf(feature);
     map.getSource("selection")?.setData({
       type: "FeatureCollection",
-      features: [{ type: "Feature", properties: feature.properties, geometry: feature.geometry }],
+      features: [
+        {
+          type: "Feature",
+          properties: { ...feature.properties },
+          geometry: { type: "Point", coordinates: [...feature.geometry.coordinates] },
+        },
+      ],
     });
   };
 
@@ -345,7 +360,7 @@ export async function createPhotoMap(
     syncLabels();
     if (selectedAt) {
       const [anchor] = pointFeaturesAt(map.project(selectedAt));
-      if (anchor) select(anchor);
+      if (anchor && keyOf(anchor) !== selectedKey) select(anchor);
     }
     if (tileFailed !== reportedFailing) {
       reportedFailing = tileFailed;
