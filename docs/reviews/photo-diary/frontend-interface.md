@@ -61,6 +61,7 @@ mocked. Accessible names are the spec's strings: tabs カレンダー / 地図 (
       points: Point[], tileUrl: string, attribution: string,
       center?: [number, number], zoom?: number,
       onPointClick: (fileIds: string[]) => void,
+      onPointError: (error: Error) => void,
       onTileFailureChange: (failing: boolean) => void,
       onViewChange: (center: [number, number], zoom: number) => void,
     }): Promise<{setPoints(points: Point[]): void, destroy(): void}>
