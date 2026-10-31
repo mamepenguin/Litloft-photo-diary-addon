@@ -1,0 +1,27 @@
+FROM python:3.12-slim
+RUN apt-get update && apt-get install -y ffmpeg libheif-dev curl && rm -rf /var/lib/apt/lists/*
+WORKDIR /app
+
+# Built from the core's repository root, with this repository checked out at
+# addons/photo_diary:
+#
+#   docker build -f addons/photo_diary/Dockerfile.test -t photo-diary-test .
+#   docker run --rm photo-diary-test
+COPY backend/requirements-dev.txt backend/requirements.txt ./
+RUN pip install --no-cache-dir -r requirements-dev.txt
+
+COPY backend/app/ ./app/
+
+# The addon is loaded by the core's own _load_addons, as in the backend image.
+COPY addons/photo_diary/backend/ ./addons/photo_diary/
+RUN touch addons/__init__.py
+
+# The tests locate backend/assets and frontend/messages relative to themselves,
+# so they keep the repository's layout. No __init__.py, so _load_addons skips it.
+COPY addons/photo_diary/backend/ ./addons/photo_diary-src/backend/
+COPY addons/photo_diary/frontend/messages/ ./addons/photo_diary-src/frontend/messages/
+COPY addons/photo_diary/tests/ ./addons/photo_diary-src/tests/
+
+COPY addons/photo_diary/pytest.ini addons/photo_diary/.coveragerc ./
+
+CMD ["pytest", "-v", "--tb=short"]

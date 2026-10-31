@@ -1,0 +1,17 @@
+{
+  "photoDiary": {
+    "nav": { "label": "フォトダイアリー" },
+    "loadError": "読み込めませんでした",
+    "retry": "再試行",
+    "notAvailable": "このドライブでは使えません",
+    "noDatedPhotos": "撮影日のある写真はありません",
+    "noPhotosOnDay": "この日の写真はありません",
+    "noLocatedPhotos": "位置情報のある写真はありません",
+    "tileError": "地図を読み込めません",
+    "noWebgl": "この環境では地図を表示できません",
+    "view": { "calendar": "カレンダー", "map": "地図" },
+    "month": { "previous": "前の月", "next": "次の月", "choose": "月を選ぶ" },
+    "close": "閉じる",
+    "undated": "撮影日なし"
+  }
+}
