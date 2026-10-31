@@ -90,18 +90,26 @@ export interface PhotoMap {
 }
 
 let library: Promise<MapLibreModule> | null = null;
+let failures = 0;
+
+// A browser remembers a failed import of a URL for the life of the page and
+// answers a second import of it without asking the network. A retry therefore
+// asks for another URL, which the server answers with the same file; the first
+// attempt keeps the bare URL, which the browser's cache holds once it loads.
+const libraryUrl = () => (failures === 0 ? LIBRARY_URL : `${LIBRARY_URL}?retry=${failures}`);
 
 function loadLibrary(): Promise<MapLibreModule> {
   if (!library) {
     // A runtime import of a served file: the frontend image installs only the
     // core's package.json, so the bundlers must leave this specifier alone.
-    library = import(/* webpackIgnore: true */ /* turbopackIgnore: true */ /* @vite-ignore */ LIBRARY_URL)
+    library = import(/* webpackIgnore: true */ /* turbopackIgnore: true */ /* @vite-ignore */ libraryUrl())
       .then((module: MapLibreModule) => {
         module.setWorkerUrl(new URL(WORKER_URL, document.baseURI).href);
         return module;
       })
       .catch((error: unknown) => {
         library = null;
+        failures += 1;
         throw error instanceof Error ? error : new Error("MapLibre failed to load");
       });
   }
