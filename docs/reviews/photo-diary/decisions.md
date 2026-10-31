@@ -15,3 +15,8 @@ The artifact is private to its owner. What it fixes:
 - The undated entry ends the month bar on desktop and follows the grid on phone.
 - The page header has the icon tile, the title and the scope line (drive and photo count). Calendar
   and Map are underline tabs.
+
+## Spec ambiguity resolved by the author
+
+"A set URL with an unset attribution shows none": `/map-config` returns `attribution: ""`, since the
+field is a string in every other case.
