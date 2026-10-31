@@ -4,7 +4,7 @@
  */
 import { expect, test, type Page } from "@playwright/test";
 import { BIG_DAY, addAppHeader, expectReachable, openPointList, serveApi } from "./pageSupport";
-import { prepare, settle } from "./support";
+import { accentPixels, prepare, settle } from "./support";
 
 const PAGE_PATH = "/page.html";
 
@@ -136,5 +136,66 @@ test.describe("Back from a photo returns to where the list was scrolled", () => 
     await page.goBack();
     await expect(page.getByTestId("tile")).toHaveCount(tiles);
     await expect.poll(() => panel.evaluate((el) => el.scrollTop)).toBeGreaterThan(before - 5);
+  });
+});
+
+test.describe("the month picker on a phone", () => {
+  test.use({ hasTouch: true, isMobile: true });
+
+  test("SPEC-PD-001: every row can be pressed, and the menu is rounded-2xl", async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 800 });
+    await open(page, "?month=2026-09");
+    await page.getByRole("button", { name: "Choose month" }).click();
+    const rows = page.locator("ul.absolute button");
+    await expect(rows.first()).toBeVisible();
+    const heights = await rows.evaluateAll((all) => all.map((row) => row.getBoundingClientRect().height));
+    expect(heights.length).toBe(8);
+    for (const height of heights) expect(height).toBeGreaterThanOrEqual(44);
+    expect(await page.locator("ul.absolute").evaluate((el) => getComputedStyle(el).borderTopLeftRadius)).toBe("16px");
+  });
+});
+
+test.describe("a URL with no query reached while the page stays mounted", () => {
+  test("SPEC-PD-001: starts the page over, map and open list included", async ({ page }) => {
+    await page.setViewportSize({ width: 1280, height: 800 });
+    const h = await open(page, "?view=map");
+    await settle(page, h);
+    await openPointList(page);
+    await expect(page.getByRole("button", { name: "Close", exact: true })).toBeVisible();
+
+    // The navigation the sidebar row and Back make, to the page's own path.
+    await page.evaluate(() => {
+      window.history.pushState(null, "", window.location.pathname);
+      window.dispatchEvent(new PopStateEvent("popstate"));
+    });
+    await expect(page.getByRole("tab", { name: "Calendar" })).toHaveAttribute("aria-selected", "true");
+    expect(await page.evaluate(() => Object.keys(sessionStorage).filter((k) => k.startsWith("photo_diary:state:")))).toEqual([]);
+
+    await page.getByRole("tab", { name: "Map" }).click();
+    await expect(page.locator("canvas").first()).toBeVisible();
+    await page.waitForTimeout(1000);
+    await expect(page.getByRole("button", { name: "Close", exact: true })).toHaveCount(0);
+  });
+});
+
+test.describe("the selected point follows the open list", () => {
+  test("SPEC-PD-002 design: accent while the list is open, after Back, and gone once it is closed", async ({ page }) => {
+    await page.setViewportSize({ width: 1280, height: 800 });
+    const h = await open(page, "?view=map");
+    await settle(page, h);
+    const canvas = page.locator("canvas").first();
+    expect(await accentPixels(page, "centre", canvas)).toBe(0);
+
+    await openPointList(page);
+    await expect.poll(() => accentPixels(page, "centre", canvas), { timeout: 10_000 }).toBeGreaterThan(40);
+
+    await page.getByTestId("tile").first().click();
+    await expect(page.locator("#file-page")).toBeVisible();
+    await page.goBack();
+    await expect(page.getByTestId("tile").first()).toBeVisible();
+    await expect.poll(() => accentPixels(page, "centre", canvas), { timeout: 10_000 }).toBeGreaterThan(40);
+
+    await page.getByRole("button", { name: "Close", exact: true }).click();
+    await expect.poll(() => accentPixels(page, "centre", canvas), { timeout: 10_000 }).toBe(0);
   });
 });

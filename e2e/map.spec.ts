@@ -5,7 +5,7 @@
  * so nothing here reaches a tile server.
  */
 import { expect, test } from "@playwright/test";
-import { FIXTURE_PATH, TILE_HOST, TILE_PATTERN, TILE_URL, clickCentre, createMap, prepare, same, settle } from "./support";
+import { FIXTURE_PATH, TILE_HOST, TILE_PATTERN, clickCentre, createMap, prepare, same, settle } from "./support";
 
 const A: [number, number] = [139.7671, 35.6812]; // [lon, lat]
 
@@ -105,7 +105,6 @@ test.describe("I10: tile requests", () => {
       expect(x).toBeLessThan(2 ** z);
       expect(y).toBeLessThan(2 ** z);
     }
-    expect(TILE_URL).toContain("{z}/{x}/{y}");
   });
 
   test("SPEC-PD-004 I10: no request carries a photo's id or coordinates", async ({ page }) => {

@@ -1,4 +1,4 @@
-import { expect, type Page } from "@playwright/test";
+import { expect, type Locator, type Page } from "@playwright/test";
 import fs from "node:fs";
 import path from "node:path";
 
@@ -27,6 +27,7 @@ export type Harness = {
   assetRequests: () => string[];
   clicks: string[][];
   views: { center: [number, number]; zoom: number }[];
+  tileFailures: boolean[];
 };
 
 /**
@@ -41,6 +42,7 @@ export async function prepare(page: Page): Promise<Harness> {
     assetRequests: () => h.requests.map((r) => r.url).filter((u) => u.includes("/api/addons/photo_diary/assets/")),
     clicks: [],
     views: [],
+    tileFailures: [],
   };
 
   page.on("request", (request) => {
@@ -66,13 +68,21 @@ export async function prepare(page: Page): Promise<Harness> {
   );
 
   await page.exposeFunction("__onPointClick", (ids: string[]) => void h.clicks.push(ids));
+  await page.exposeFunction("__onTileFailure", (value: boolean) => void h.tileFailures.push(value));
   await page.exposeFunction("__onView", (center: [number, number], zoom: number) => void h.views.push({ center, zoom }));
   return h;
 }
 
 export async function createMap(
   page: Page,
-  options: { points: Point[]; center: [number, number]; zoom: number; attribution?: string; tileUrl?: string },
+  options: {
+    points: Point[];
+    center: [number, number];
+    zoom: number;
+    attribution?: string;
+    tileUrl?: string;
+    selected?: string[];
+  },
 ) {
   await page.evaluate(async (o) => {
     const w = window as any;
@@ -82,8 +92,10 @@ export async function createMap(
       attribution: o.attribution,
       center: o.center,
       zoom: o.zoom,
+      selected: o.selected,
       onPointClick: (ids: string[]) => w.__onPointClick(ids),
-      onTileFailureChange: () => {},
+      onPointError: () => {},
+      onTileFailureChange: (value: boolean) => w.__onTileFailure(value),
       onViewChange: (c: [number, number], z: number) => w.__onView(c, z),
     });
   }, { attribution: "", tileUrl: TILE_URL, ...options });
@@ -108,3 +120,49 @@ export const same = (id: string, n: number, lat: number, lon: number): Point[] =
     lon,
     taken_at: "2026-10-03T10:00:00",
   }));
+
+/** The text of each count label on the map, sorted. */
+export const labelTexts = (page: Page) =>
+  page.locator("#map .maplibregl-marker").allTextContents().then((texts) => texts.sort());
+
+export const PNG = PNG_1X1;
+
+/** Zooms in one level at the map's centre. */
+export async function zoomInAtCentre(page: Page) {
+  const box = (await page.locator("#map").boundingBox())!;
+  await page.mouse.dblclick(box.x + box.width / 2, box.y + box.height / 2);
+  await page.waitForTimeout(600);
+}
+
+// What the canvas shows, not what the style claims. The colour is the page's
+// own `--accent`, so a selection drawn in any other colour does not count.
+export async function accentPixels(
+  page: Page,
+  region: "map" | "centre" = "map",
+  target: Locator = page.locator("#map"),
+): Promise<number> {
+  const box = (await target.boundingBox())!;
+  const clip =
+    region === "map"
+      ? box
+      : { x: box.x + box.width / 2 - 12, y: box.y + box.height / 2 - 12, width: 24, height: 24 };
+  const png = await page.screenshot({ clip });
+  return page.evaluate(async (base64) => {
+    const token = getComputedStyle(document.documentElement).getPropertyValue("--accent").trim();
+    const [r, g, b] = [1, 3, 5].map((i) => parseInt(token.slice(i, i + 2), 16));
+    const bytes = Uint8Array.from(atob(base64), (c) => c.charCodeAt(0));
+    const bitmap = await createImageBitmap(new Blob([bytes], { type: "image/png" }));
+    const canvas = document.createElement("canvas");
+    canvas.width = bitmap.width;
+    canvas.height = bitmap.height;
+    const context = canvas.getContext("2d")!;
+    context.drawImage(bitmap, 0, 0);
+    const { data } = context.getImageData(0, 0, canvas.width, canvas.height);
+    let count = 0;
+    for (let i = 0; i < data.length; i += 4) {
+      if (Math.abs(data[i] - r) < 12 && Math.abs(data[i + 1] - g) < 12 && Math.abs(data[i + 2] - b) < 12) count++;
+    }
+    return count;
+  }, png.toString("base64"));
+}
+
