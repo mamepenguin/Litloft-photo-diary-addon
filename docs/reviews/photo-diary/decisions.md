@@ -65,3 +65,5 @@ impact of at least 8). Details are in `code-r1.md`, `code-r2.md` and `mutation-r
   `Button`, `DismissScrim`. The spec is not edited after approval, so it stays recorded here.
 - `code-r2.md`: A1, A2 (settled above), T2 to T6, B1 to B5.
 - `mutation-r1.md`: the surviving mutations other than the 24 closed.
+
+`code-r3.md`: findings 1 and 2 are fixed in `b380af9`. Findings 3 and 4 are below the threshold.
