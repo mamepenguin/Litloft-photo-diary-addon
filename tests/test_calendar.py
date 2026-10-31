@@ -8,6 +8,7 @@ UNDATED_VALUES = [
     pytest.param(None, id="null"),
     pytest.param("0000-00-00T00:00:00", id="zeros"),
     pytest.param("    -  -  T  :  :  ", id="blank-template"),
+    pytest.param("0000-01-01T00:00:00", id="year-zero"),
     pytest.param("2026-02-30T10:00:00", id="feb-30"),
     pytest.param("2025-02-29T10:00:00", id="feb-29-non-leap"),
     pytest.param("2026-13-01T10:00:00", id="month-13"),

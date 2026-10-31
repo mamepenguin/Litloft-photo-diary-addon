@@ -106,6 +106,20 @@ def test_pd004_every_bundled_file_is_served_immutable_without_a_drive(env):
         assert r.headers["cache-control"] == "public, max-age=31536000, immutable"
 
 
+# A module script is refused unless it is served with a JavaScript type.
+@pytest.mark.parametrize(
+    "suffix,media_type",
+    [(".js", "text/javascript"), (".css", "text/css"), (".txt", "text/plain")],
+)
+def test_pd004_each_bundled_file_is_served_with_its_type(env, suffix, media_type):
+    client, *_ = env
+    files = [p for p in asset_files() if p.suffix == suffix]
+    assert files
+    for p in files:
+        r = client.get(f"{BASE}/assets/{p.name}")
+        assert r.headers["content-type"].split(";")[0] == media_type, p.name
+
+
 def test_pd004_assets_unaffected_by_policy_off(env):
     from .conftest import set_policy
 

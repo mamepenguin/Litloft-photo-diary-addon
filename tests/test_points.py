@@ -45,6 +45,15 @@ def test_pd002_dated_first_oldest_first_then_undated_by_filename(env):
     assert no_exif_place not in [p["file_id"] for p in got]
 
 
+def test_i8_within_a_day_points_follow_capture_time_not_filename(env):
+    client, lib, *_ = env
+    late = lib.add(filename="a.jpg", taken="2026-10-01T15:00:00", lat=1.0, lon=1.0)
+    early = lib.add(filename="b.jpg", taken="2026-10-01T08:00:00", lat=1.0, lon=1.0)
+    photos = client.get(f"{BASE}/photos", params={"date": "2026-10-01"}, headers=hdr())
+    assert photos.json()["file_ids"] == [early, late]
+    assert [p["file_id"] for p in points(client)] == [early, late]
+
+
 CAPTURE_PLACES = [
     pytest.param(0.0, 10.0, True, id="lat-zero-valid"),
     pytest.param(10.0, 0.0, True, id="lon-zero-valid"),
