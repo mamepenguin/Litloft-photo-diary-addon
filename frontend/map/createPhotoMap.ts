@@ -11,8 +11,11 @@ const MAX_ZOOM = 19;
 const FIT_MAX_ZOOM = 15;
 const CLUSTER_RADIUS = 40;
 // Clustering has to run at the map's top zoom, or photos with identical
-// coordinates would be separate points there.
+// coordinates would be separate points there. MapLibre warns, on every map,
+// when the source's maxzoom is not above clusterMaxZoom; the map never goes
+// past MAX_ZOOM, so the level above is not requested.
 const CLUSTER_MAX_ZOOM = MAX_ZOOM;
+const SOURCE_MAX_ZOOM = MAX_ZOOM + 1;
 
 const PLUM = "#211922";
 
@@ -199,7 +202,7 @@ function buildStyle(options: PhotoMapOptions) {
         clusterRadius: CLUSTER_RADIUS,
         clusterMaxZoom: CLUSTER_MAX_ZOOM,
         clusterProperties: { selected: ["+", ["get", "sel"]] },
-        maxzoom: MAX_ZOOM,
+        maxzoom: SOURCE_MAX_ZOOM,
       },
     },
     layers: [

@@ -44,6 +44,18 @@ test.describe("I7: a point lists every photo it stands for and no other", () => 
     expect(h.clicks.at(-1)).toEqual(["up-0"]);
   });
 
+  test("SPEC-PD-002: creating a map makes MapLibre warn about nothing", async ({ page }) => {
+    const h = await prepare(page);
+    const warnings: string[] = [];
+    page.on("console", (message) => {
+      if (message.text().includes("maxzoom")) warnings.push(message.text());
+    });
+    await page.goto(FIXTURE_PATH);
+    await createMap(page, { points: same("a", 3, 35.6812, 139.7671), center: A, zoom: 12 });
+    await settle(page, h);
+    expect(warnings).toEqual([]);
+  });
+
   test("SPEC-PD-002 I7: a lone photo is a point of one", async ({ page }) => {
     const h = await prepare(page);
     await page.goto(FIXTURE_PATH);
