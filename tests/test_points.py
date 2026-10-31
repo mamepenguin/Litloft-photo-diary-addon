@@ -86,7 +86,7 @@ def test_pd002_date_without_place_is_calendar_only(env):
 
 def test_pd002_identical_coordinates_are_all_returned(env):
     client, lib, *_ = env
-    ids = [lib.add(taken=f"2026-10-03T08:{i:02d}:00", lat=35.0, lon=139.0) for i in range(150)]
+    ids = [lib.add(taken=f"2026-10-03T08:{i // 60:02d}:{i % 60:02d}", lat=35.0, lon=139.0) for i in range(150)]
     assert [p["file_id"] for p in points(client)] == ids
 
 

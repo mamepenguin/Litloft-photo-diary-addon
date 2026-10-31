@@ -80,7 +80,7 @@ def test_pd004_custom_url_without_attribution_shows_none(tmp_path):
     r = map_config(tmp_path, PHOTO_DIARY_TILE_URL="https://tiles.example/{z}/{x}/{y}.png")
     assert r["status"] == 200
     assert r["body"]["tile_url"] == "https://tiles.example/{z}/{x}/{y}.png"
-    assert r["body"]["attribution"] in ("", None)
+    assert r["body"]["attribution"] == ""
 
 
 def asset_files():
