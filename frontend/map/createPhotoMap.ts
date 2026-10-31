@@ -117,15 +117,6 @@ function ensureStylesheet(): void {
   document.head.appendChild(link);
 }
 
-function hasWebGL(): boolean {
-  try {
-    const canvas = document.createElement("canvas");
-    return Boolean(canvas.getContext("webgl2") ?? canvas.getContext("webgl"));
-  } catch {
-    return false;
-  }
-}
-
 function toCollection(points: Point[]) {
   return {
     type: "FeatureCollection",
@@ -241,8 +232,6 @@ export async function createPhotoMap(
   container: HTMLElement,
   options: PhotoMapOptions,
 ): Promise<PhotoMap> {
-  if (!hasWebGL()) throw new WebGLUnavailableError();
-
   const maplibre = await loadLibrary();
   ensureStylesheet();
 
@@ -262,7 +251,10 @@ export async function createPhotoMap(
       ...view,
     });
   } catch (error) {
-    if (error instanceof Error && /webgl/i.test(error.message)) {
+    // Asking for a context first, on a probe canvas, left the map's own
+    // context creation failing intermittently in a software-rendered browser,
+    // so the constructor's own refusal is what is read.
+    if (error instanceof Error && error.name === "GPUInitializationError") {
       throw new WebGLUnavailableError(error.message);
     }
     throw error;
