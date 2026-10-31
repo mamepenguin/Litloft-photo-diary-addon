@@ -46,7 +46,14 @@ export async function prepare(page: Page): Promise<Harness> {
   };
 
   page.on("request", (request) => {
-    void request.allHeaders().then((headers) => h.requests.push({ url: request.url(), headers }));
+    // A request still in flight when the test ends has no page left to read
+    // headers from, and is not a request any assertion can still look at.
+    void request
+      .allHeaders()
+      .then((headers) => h.requests.push({ url: request.url(), headers }))
+      .catch((error) => {
+        if (!String(error).includes("has been closed")) throw error;
+      });
   });
 
   await page.route(

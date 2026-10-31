@@ -1,12 +1,15 @@
 import { expect, test } from "@playwright/test";
-import { FIXTURE_PATH, TILE_URL, prepare, same } from "./support";
+import { FIXTURE_PATH, TILE_URL, labelTexts, prepare, same } from "./support";
 
 const WORKER = "**/api/addons/photo_diary/assets/maplibre-gl-worker-6.16.0.js*";
 
-test("SPEC-PD-002: a map whose worker file failed to load reports it, and loads on the next try", async ({ page }) => {
+for (const failure of ["a network error", "a 503"]) test(`SPEC-PD-002: a map whose worker file fails with ${failure} reports it, and draws its points on the next try`, async ({ page }) => {
   const h = await prepare(page);
   let failing = true;
-  await page.route(WORKER, (route) => (failing ? route.abort() : route.fallback()));
+  await page.route(WORKER, (route) => {
+    if (!failing) return route.fallback();
+    return failure === "a 503" ? route.fulfill({ status: 503 }) : route.abort();
+  });
   await page.goto(FIXTURE_PATH);
 
   const create = () =>
@@ -46,4 +49,7 @@ test("SPEC-PD-002: a map whose worker file failed to load reports it, and loads 
   failing = false;
   expect(await create()).toBe("created");
   await expect(page.locator("canvas").first()).toBeVisible();
+  // The count comes out of the worker's clustering, so it shows the retried
+  // worker URL is the one the map runs on.
+  await expect.poll(() => labelTexts(page), { timeout: 15_000 }).toContain("2");
 });
