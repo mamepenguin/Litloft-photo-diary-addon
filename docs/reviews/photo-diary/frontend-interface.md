@@ -75,3 +75,6 @@ library fails to load. It loads MapLibre from `/api/addons/photo_diary/assets/` 
 `e2e/fixture/entry.ts` imports `createPhotoMap` and exposes it as `window.createPhotoMap`; it is
 bundled by `e2e/build-fixture.mjs`. Tests answer `/api/addons/photo_diary/assets/*` from
 `backend/assets/` and tile requests with `page.route`.
+
+- `createPhotoMap`'s `onPointError` is called as `(error, retry)`, where `retry` reads the same point's
+  members again; without it the page's "list opens with the load error and a retry" has nothing to retry.
