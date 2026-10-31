@@ -8,6 +8,14 @@ import type { FileItem } from "@/types";
 import { LoadError } from "./LoadError";
 import { usePagedPhotos, type FetchIds } from "./usePagedPhotos";
 
+// The heading row carries the close control, which has to stay reachable
+// while a long list scrolls. A panel scrolls inside its own padding, so the
+// row reaches over it; the page scrolls under the app header, which
+// publishes its height.
+const HEADING_ROW = "sticky z-10 flex items-center gap-3 bg-bg-primary pb-3";
+const PANEL_HEADING = "top-0 -mx-4 -mt-4 px-4 pt-4";
+const PAGE_HEADING = "top-[var(--app-header-h,0px)]";
+
 export type ListPosition = { loaded: () => number; scrollY: () => number };
 
 type Props = {
@@ -118,7 +126,7 @@ export function PhotoList({
       ref={panel}
       className={[scroller === "panel" ? "overflow-y-auto" : "", className ?? ""].join(" ").trim()}
     >
-      <div className="flex items-center gap-3 pb-3">
+      <div className={`${HEADING_ROW} ${scroller === "panel" ? PANEL_HEADING : PAGE_HEADING}`}>
         <div className="min-w-0 flex-1">{heading?.(total)}</div>
         <Button size="sm" onClick={onClose}>
           <X size={14} aria-hidden="true" />

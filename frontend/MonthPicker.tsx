@@ -28,7 +28,6 @@ export function MonthPicker({ months, current, onChoose }: Props) {
     // A React handler, not a document listener: a listener cannot know what is
     // stacked above the picker.
     <div
-      className="relative"
       onKeyDown={(event) => {
         if (!open || event.key !== "Escape") return;
         event.stopPropagation();
@@ -47,7 +46,10 @@ export function MonthPicker({ months, current, onChoose }: Props) {
       </button>
       {open && (
         <DismissScrim onDismiss={() => setOpen(false)}>
-          <ul className="absolute left-0 top-full z-30 mt-1 max-h-72 w-56 overflow-y-auto rounded-xl border border-bg-border bg-bg-card p-1 shadow-lg">
+          // Placed against the month bar that holds the picker, not against the
+          // trigger: the trigger sits wherever the month's name ends, which
+          // can leave a menu of this width past the edge of a phone.
+          <ul className="absolute left-0 top-full z-30 mt-1 max-h-72 w-56 max-w-full overflow-y-auto rounded-xl border border-bg-border bg-bg-card p-1 shadow-lg">
             {months.map(({ month, count }) => (
               <li key={month}>
                 <button

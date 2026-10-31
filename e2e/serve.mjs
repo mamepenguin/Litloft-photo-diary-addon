@@ -6,7 +6,7 @@ import { fileURLToPath } from "node:url";
 
 const root = join(fileURLToPath(new URL(".", import.meta.url)), "fixture");
 const port = Number(process.argv[2]);
-const types = { ".html": "text/html", ".js": "text/javascript" };
+const types = { ".html": "text/html", ".js": "text/javascript", ".css": "text/css" };
 
 createServer(async (req, res) => {
   const name = normalize(new URL(req.url, "http://x").pathname).replace(/^\/+/, "") || "index.html";

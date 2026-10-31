@@ -170,7 +170,7 @@ export function CalendarView({
       {months !== null && (
         <div className="grid gap-6 group-data-[wide=true]/diary:grid-cols-[minmax(0,26rem)_minmax(0,1fr)] group-data-[wide=true]/diary:items-start">
           <div className="grid gap-3 [grid-template-areas:'bar'_'grid'_'undated'] group-data-[wide=true]/diary:grid-cols-[minmax(0,1fr)_auto] group-data-[wide=true]/diary:[grid-template-areas:'bar_undated'_'grid_grid']">
-            <div className="flex items-center gap-1 [grid-area:bar]">
+            <div className="relative flex items-center gap-1 [grid-area:bar]">
               {month && (
                 <>
                   <Button
