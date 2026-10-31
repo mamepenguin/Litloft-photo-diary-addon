@@ -26,7 +26,7 @@ export function useWide<T extends HTMLElement>() {
       observer.current?.disconnect();
       observer.current = null;
       node.current = element;
-      if (element && typeof ResizeObserver !== "undefined") {
+      if (element) {
         observer.current = new ResizeObserver(measure);
         observer.current.observe(element);
       }

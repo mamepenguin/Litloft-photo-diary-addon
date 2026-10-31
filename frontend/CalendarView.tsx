@@ -126,9 +126,10 @@ export function CalendarView({
           ? "undated"
           : null;
 
+  // `go` drops the view from the URL, so only the view on screen may call it.
   useEffect(() => {
-    if (months !== null && url.undated && undatedCount === 0) go("replace", { month: url.month });
-  }, [months, url.undated, url.month, undatedCount, go]);
+    if (active && months !== null && url.undated && undatedCount === 0) go("replace", { month: url.month });
+  }, [active, months, url.undated, url.month, undatedCount, go]);
 
   const fetchIds = useCallback<FetchIds>(
     async (offset, limit) => {
@@ -154,7 +155,9 @@ export function CalendarView({
   const openDate = listKind === "day" ? url.date : null;
 
   const closeList = () => go("push", { month });
-  const closeEmptyUndated = useCallback(() => go("replace", { month: url.month }), [go, url.month]);
+  const closeEmptyUndated = useCallback(() => {
+    if (active) go("replace", { month: url.month });
+  }, [active, go, url.month]);
   const onListResult = useCallback((ok: boolean) => report("list", ok), [report]);
 
   return (

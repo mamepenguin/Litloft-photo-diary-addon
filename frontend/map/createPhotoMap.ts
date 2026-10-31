@@ -11,13 +11,10 @@ const MAX_ZOOM = 19;
 const FIT_MAX_ZOOM = 15;
 const CLUSTER_RADIUS = 40;
 // Clustering has to run at the map's top zoom, or photos with identical
-// coordinates would be separate points there. The source's maxzoom sits above
-// clusterMaxZoom so that the top tile level is still a clustered one.
+// coordinates would be separate points there.
 const CLUSTER_MAX_ZOOM = MAX_ZOOM;
-const SOURCE_MAX_ZOOM = MAX_ZOOM + 1;
 
 const PLUM = "#211922";
-const FALLBACK_ACCENT = "#d63031";
 
 export class WebGLUnavailableError extends Error {
   constructor(message = "WebGL is unavailable") {
@@ -38,8 +35,13 @@ interface GeoJSONSourceLike {
   getClusterLeaves(clusterId: number, limit: number, offset: number): Promise<Feature[]>;
 }
 
+interface RasterSourceLike {
+  setTiles(tiles: string[]): void;
+}
+
 interface MapLike {
-  getSource(id: string): GeoJSONSourceLike | undefined;
+  getSource(id: "points"): GeoJSONSourceLike | undefined;
+  getSource(id: "tiles"): RasterSourceLike | undefined;
   addControl(control: unknown, position?: string): void;
   on(type: string, listener: (event: never) => void): void;
   once(type: string, listener: () => void): void;
@@ -77,6 +79,8 @@ export interface PhotoMapOptions {
   attribution: string;
   center?: LngLat;
   zoom?: number;
+  /** Ids of the photos whose list is open; the point they make up is drawn in the accent colour. */
+  selected?: string[];
   onPointClick: (fileIds: string[]) => void;
   /** `retry` reads the same point's members again. */
   onPointError: (error: Error, retry: () => void) => void;
@@ -86,6 +90,8 @@ export interface PhotoMapOptions {
 
 export interface PhotoMap {
   setPoints(points: Point[]): void;
+  /** Draws in the accent colour each point that stands only for photos among `ids`. */
+  setSelected(ids: string[] | null): void;
   destroy(): void;
 }
 
@@ -125,16 +131,22 @@ function ensureStylesheet(): void {
   document.head.appendChild(link);
 }
 
-function toCollection(points: Point[]) {
+// `sel` is 1 for a selected photo. A cluster sums it, so a point is selected
+// exactly when the sum equals the number of photos it stands for, at whatever
+// zoom the map is drawn.
+function toCollection(points: Point[], selected: ReadonlySet<string>) {
   return {
     type: "FeatureCollection",
     features: points.map((p) => ({
       type: "Feature",
-      properties: { id: p.file_id },
+      properties: { id: p.file_id, sel: selected.has(p.file_id) ? 1 : 0 },
       geometry: { type: "Point", coordinates: [p.lon, p.lat] },
     })),
   };
 }
+
+const clusterSelected = ["==", ["get", "selected"], ["get", "point_count"]];
+const singleSelected = ["==", ["get", "sel"], 1];
 
 function boundsOf(points: Point[]): [LngLat, LngLat] {
   let west = Infinity;
@@ -164,8 +176,7 @@ function countLabel(count: number): HTMLElement {
 
 // A GL paint cannot read a CSS variable, so the token is resolved here.
 function accentColor(): string {
-  const value = getComputedStyle(document.documentElement).getPropertyValue("--accent").trim();
-  return value || FALLBACK_ACCENT;
+  return getComputedStyle(document.documentElement).getPropertyValue("--accent").trim();
 }
 
 function buildStyle(options: PhotoMapOptions) {
@@ -183,13 +194,13 @@ function buildStyle(options: PhotoMapOptions) {
       },
       points: {
         type: "geojson",
-        data: toCollection(options.points),
+        data: toCollection(options.points, new Set(options.selected)),
         cluster: true,
         clusterRadius: CLUSTER_RADIUS,
         clusterMaxZoom: CLUSTER_MAX_ZOOM,
-        maxzoom: SOURCE_MAX_ZOOM,
+        clusterProperties: { selected: ["+", ["get", "sel"]] },
+        maxzoom: MAX_ZOOM,
       },
-      selection: { type: "geojson", data: toCollection([]) },
     },
     layers: [
       { id: "tiles", type: "raster", source: "tiles" },
@@ -199,7 +210,7 @@ function buildStyle(options: PhotoMapOptions) {
         source: "points",
         filter: ["has", "point_count"],
         paint: {
-          "circle-color": PLUM,
+          "circle-color": ["case", clusterSelected, accent, PLUM],
           "circle-radius": ["step", ["get", "point_count"], 14, 10, 17, 100, 20],
           ...ring,
         },
@@ -209,34 +220,11 @@ function buildStyle(options: PhotoMapOptions) {
         type: "circle",
         source: "points",
         filter: ["!", ["has", "point_count"]],
-        paint: { "circle-color": PLUM, "circle-radius": 8, ...ring },
-      },
-      {
-        id: "selected-cluster",
-        type: "circle",
-        source: "selection",
-        filter: ["has", "point_count"],
-        paint: {
-          "circle-color": accent,
-          "circle-radius": ["step", ["get", "point_count"], 14, 10, 17, 100, 20],
-          ...ring,
-        },
-      },
-      {
-        id: "selected-single",
-        type: "circle",
-        source: "selection",
-        filter: ["!", ["has", "point_count"]],
-        paint: { "circle-color": accent, "circle-radius": 8, ...ring },
+        paint: { "circle-color": ["case", singleSelected, accent, PLUM], "circle-radius": 8, ...ring },
       },
     ],
   };
 }
-
-// Re-selecting what is already selected would redraw the source, which ends
-// in another idle and so loops.
-const keyOf = (feature: Feature) =>
-  JSON.stringify([feature.geometry.coordinates, feature.properties?.cluster_id, feature.properties?.point_count, feature.properties?.id]);
 
 const POINT_LAYERS = ["clusters", "singles"];
 const HIT_SLOP = 4;
@@ -276,11 +264,12 @@ export async function createPhotoMap(
   map.addControl(new maplibre.AttributionControl({ compact: false }), "top-left");
   map.addControl(new maplibre.NavigationControl({ showCompass: false }), "top-right");
 
-  const labels = new Map<number, MarkerLike>();
-  let selectedAt: LngLat | null = null;
-  let selectedKey = "";
+  const labels = new Map<number, { marker: MarkerLike; count: number }>();
+  let currentPoints = options.points;
+  let selected = new Set(options.selected);
   let tileFailed = false;
   let reportedFailing = false;
+  let verifyingTiles = false;
   let destroyed = false;
 
   const pointFeaturesAt = (position: { x: number; y: number }) =>
@@ -291,23 +280,6 @@ export async function createPhotoMap(
       ],
       { layers: POINT_LAYERS },
     );
-
-  // A rendered feature's properties have no prototype, and a source given
-  // such an object draws nothing, with no error.
-  const select = (feature: Feature) => {
-    selectedAt = feature.geometry.coordinates;
-    selectedKey = keyOf(feature);
-    map.getSource("selection")?.setData({
-      type: "FeatureCollection",
-      features: [
-        {
-          type: "Feature",
-          properties: { ...feature.properties },
-          geometry: { type: "Point", coordinates: [...feature.geometry.coordinates] },
-        },
-      ],
-    });
-  };
 
   const membersOf = async (feature: Feature): Promise<string[]> => {
     const props = feature.properties ?? {};
@@ -323,11 +295,9 @@ export async function createPhotoMap(
     try {
       const ids = await membersOf(feature);
       if (destroyed) return;
-      select(feature);
       options.onPointClick(ids);
     } catch (error) {
       if (destroyed) return;
-      select(feature);
       options.onPointError(error instanceof Error ? error : new Error(String(error)), () => {
         void open(feature);
       });
@@ -349,32 +319,55 @@ export async function createPhotoMap(
       const id = feature.properties?.cluster_id;
       if (typeof id !== "number" || seen.has(id)) continue;
       seen.add(id);
-      if (labels.has(id)) continue;
-      labels.set(
-        id,
-        new maplibre.Marker({ element: countLabel(Number(feature.properties?.point_count)), anchor: "center" })
+      // A cluster id names a position in the index, so after the points
+      // change it can name another cluster; its position is read again as
+      // well, since tiles hold the same cluster at slightly different places.
+      const count = Number(feature.properties?.point_count);
+      const shown = labels.get(id);
+      if (shown?.count === count) {
+        shown.marker.setLngLat(feature.geometry.coordinates);
+        continue;
+      }
+      shown?.marker.remove();
+      labels.set(id, {
+        count,
+        marker: new maplibre.Marker({ element: countLabel(count), anchor: "center" })
           .setLngLat(feature.geometry.coordinates)
           .addTo(map),
-      );
+      });
     }
-    for (const [id, marker] of labels) {
+    for (const [id, { marker }] of labels) {
       if (seen.has(id)) continue;
       marker.remove();
       labels.delete(id);
     }
   };
 
+  const reportTiles = (failing: boolean) => {
+    if (failing === reportedFailing) return;
+    reportedFailing = failing;
+    options.onTileFailureChange(failing);
+  };
+
+  // An errored tile is not asked for again while it stays in view, so an idle
+  // that brought no new error does not show the tiles recovered. While the
+  // notice is up, the first such idle asks for the tiles in view once more,
+  // and the idle after that one decides.
   const onIdle = () => {
     syncLabels();
-    if (selectedAt) {
-      const [anchor] = pointFeaturesAt(map.project(selectedAt));
-      if (anchor && keyOf(anchor) !== selectedKey) select(anchor);
+    if (tileFailed) {
+      tileFailed = false;
+      verifyingTiles = false;
+      reportTiles(true);
+    } else if (reportedFailing) {
+      if (verifyingTiles) {
+        verifyingTiles = false;
+        reportTiles(false);
+      } else {
+        verifyingTiles = true;
+        map.getSource("tiles")?.setTiles([options.tileUrl]);
+      }
     }
-    if (tileFailed !== reportedFailing) {
-      reportedFailing = tileFailed;
-      options.onTileFailureChange(tileFailed);
-    }
-    tileFailed = false;
   };
 
   const onError = (event: { sourceId?: string }) => {
@@ -393,17 +386,26 @@ export async function createPhotoMap(
   map.on("error", onError as never);
   map.on("moveend", onMoveEnd);
 
-  const applyPoints = (points: Point[]) => {
+  const drawData = () => {
     const source = map.getSource("points");
-    if (source) source.setData(toCollection(points));
-    else map.once("styledata", () => applyPoints(points));
+    if (source) source.setData(toCollection(currentPoints, selected));
+    else map.once("styledata", drawData);
   };
 
   return {
-    setPoints: applyPoints,
+    setPoints(points) {
+      currentPoints = points;
+      drawData();
+    },
+    setSelected(ids) {
+      const next = new Set(ids);
+      if (next.size === selected.size && [...next].every((id) => selected.has(id))) return;
+      selected = next;
+      drawData();
+    },
     destroy() {
       destroyed = true;
-      for (const marker of labels.values()) marker.remove();
+      for (const { marker } of labels.values()) marker.remove();
       labels.clear();
       map.remove();
     },

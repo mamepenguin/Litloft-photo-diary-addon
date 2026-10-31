@@ -60,11 +60,19 @@ mocked. Accessible names are the spec's strings: tabs カレンダー / 地図 (
     createPhotoMap(container: HTMLElement, options: {
       points: Point[], tileUrl: string, attribution: string,
       center?: [number, number], zoom?: number,
+      selected?: string[],
       onPointClick: (fileIds: string[]) => void,
       onPointError: (error: Error) => void,
       onTileFailureChange: (failing: boolean) => void,
       onViewChange: (center: [number, number], zoom: number) => void,
-    }): Promise<{setPoints(points: Point[]): void, destroy(): void}>
+    }): Promise<{
+      setPoints(points: Point[]): void,
+      setSelected(ids: string[] | null): void,
+      destroy(): void,
+    }>
+
+`selected` and `setSelected` are the photo ids of the open list. The map draws in `--accent` each
+point that stands only for photos among them, at whatever zoom it is drawn, and no other.
 
 Rejects with `WebGLUnavailableError` when WebGL is unavailable, and with another error when the
 library fails to load. It loads MapLibre from `/api/addons/photo_diary/assets/` at call time.

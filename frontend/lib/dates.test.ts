@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { formatListDate, formatMonth, monthGrid } from "./dates";
+import { formatListDate, formatMonth, monthGrid, weekdayLabels } from "./dates";
 
 const ORIGINAL_TZ = process.env.TZ;
 afterEach(() => {
@@ -94,6 +94,19 @@ describe("formatMonth", () => {
       expect(formatMonth("2026-10", "en"), zone).toContain("2026");
       expect(formatMonth("2026-01", "en"), zone).toMatch(/Jan/);
       expect(formatMonth("2026-01", "en"), zone).toContain("2026");
+    }
+  });
+});
+
+describe("weekdayLabels", () => {
+  // The grid's first cell is a Sunday in every locale, so the header over it is too.
+  it.each([
+    ["en", ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]],
+    ["ja", ["日", "月", "火", "水", "木", "金", "土"]],
+  ])("SPEC-PD-001: %s starts on Sunday, in any zone", (locale, expected) => {
+    for (const zone of ZONES) {
+      process.env.TZ = zone;
+      expect(weekdayLabels(locale)).toEqual(expected);
     }
   });
 });

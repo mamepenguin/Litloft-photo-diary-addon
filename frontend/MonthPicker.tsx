@@ -49,7 +49,7 @@ export function MonthPicker({ months, current, onChoose }: Props) {
       </button>
       {open && (
         <DismissScrim onDismiss={() => setOpen(false)}>
-          <ul className="absolute left-0 top-full z-30 mt-1 max-h-72 w-56 max-w-full overflow-y-auto rounded-xl border border-bg-border bg-bg-card p-1 shadow-lg">
+          <ul className="absolute left-0 top-full z-30 mt-1 max-h-72 w-56 max-w-full overflow-y-auto rounded-2xl border border-bg-border bg-bg-card p-1 shadow-lg">
             {months.map(({ month, count }) => (
               <li key={month}>
                 <button
@@ -59,7 +59,7 @@ export function MonthPicker({ months, current, onChoose }: Props) {
                     setOpen(false);
                     onChoose(month);
                   }}
-                  className={`flex w-full items-center justify-between gap-3 rounded-xl px-3 py-2 text-left text-sm hover:bg-bg-elevated ${
+                  className={`flex w-full items-center justify-between gap-3 rounded-xl px-3 py-2 text-left text-sm hover:bg-bg-elevated focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring pointer-coarse:min-h-11 ${
                     month === current ? "font-semibold text-text-primary" : "text-text-muted"
                   }`}
                 >

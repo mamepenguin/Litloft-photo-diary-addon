@@ -34,6 +34,8 @@ type Props = {
   onPointIds: (ids: string[] | null) => void;
   onRestored: () => void;
   onNotAvailable: () => void;
+  /** The list wrote through the core, and what the page shows about the drive may have changed. */
+  onRefresh: () => void;
 };
 
 const PANEL_CLASS =
@@ -61,6 +63,7 @@ export function MapView({
   onPointIds,
   onRestored,
   onNotAvailable,
+  onRefresh,
 }: Props) {
   const t = useTranslations("photoDiary");
   const { ref, wide } = useWide<HTMLDivElement>();
@@ -98,8 +101,8 @@ export function MapView({
     [onPointIds],
   );
 
-  const handlers = useRef({ applyOpenIds, onView });
-  handlers.current = { applyOpenIds, onView };
+  const handlers = useRef({ applyOpenIds, onView, onRefresh });
+  handlers.current = { applyOpenIds, onView, onRefresh };
 
   useEffect(() => {
     if (!active || unavailable.current) return;
@@ -163,8 +166,10 @@ export function MapView({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [drive, active, token, onNotAvailable]);
 
+  // A map made while its view is hidden is fitted against a container of no
+  // size, so it is made once the view is on screen.
   useEffect(() => {
-    if (phase !== "creating" || !host.current || !pointsRef.current || !config.current) return;
+    if (!active || phase !== "creating" || !host.current || !pointsRef.current || !config.current) return;
     let cancelled = false;
     const used = pointsRef.current;
     const view = viewRef.current;
@@ -174,6 +179,7 @@ export function MapView({
       attribution: config.current.attribution,
       center: view?.center,
       zoom: view?.zoom,
+      selected: openIdsRef.current ?? undefined,
       onPointClick: (ids) => {
         if (sameMembers(openIdsRef.current, ids)) return;
         setListError(null);
@@ -198,6 +204,7 @@ export function MapView({
         }
         handle.current = created;
         if (pointsRef.current !== used && pointsRef.current) created.setPoints(pointsRef.current);
+        created.setSelected(openIdsRef.current);
         setPhase("ready");
       },
       (error: unknown) => {
@@ -211,7 +218,11 @@ export function MapView({
     return () => {
       cancelled = true;
     };
-  }, [phase]);
+  }, [phase, active]);
+
+  useEffect(() => {
+    handle.current?.setSelected(openIds);
+  }, [openIds]);
 
   useEffect(
     () => () => {
@@ -232,6 +243,7 @@ export function MapView({
   const refresh = useCallback(() => {
     reason.current = "refresh";
     setToken((value) => value + 1);
+    handlers.current.onRefresh();
   }, []);
   const retryLoad = useCallback(() => {
     setPhase("loading");

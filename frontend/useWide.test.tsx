@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { act, render } from "@testing-library/react";
 import { useWide } from "./useWide";
 
@@ -11,6 +11,16 @@ function measuredAt(width: number, rootFontPx = 16) {
   document.documentElement.style.fontSize = `${rootFontPx}px`;
   vi.spyOn(Element.prototype, "getBoundingClientRect").mockReturnValue({ width } as DOMRect);
 }
+
+class IdleResizeObserver {
+  observe() {}
+  unobserve() {}
+  disconnect() {}
+}
+
+beforeEach(() => {
+  vi.stubGlobal("ResizeObserver", IdleResizeObserver);
+});
 
 afterEach(() => {
   vi.restoreAllMocks();

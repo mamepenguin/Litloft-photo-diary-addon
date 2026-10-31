@@ -36,9 +36,14 @@ const h = vi.hoisted(() => ({
   gridProps: [] as Record<string, unknown>[],
   observers: new Set<{ callback: IntersectionObserverCallback }>(),
   missing: new Set<string>(),
-  handles: [] as { setPoints: ReturnType<typeof vi.fn>; destroy: ReturnType<typeof vi.fn> }[],
+  handles: [] as {
+    setPoints: ReturnType<typeof vi.fn>;
+    setSelected: ReturnType<typeof vi.fn>;
+    destroy: ReturnType<typeof vi.fn>;
+  }[],
   mapOptions: { current: null as null | Record<string, any> },
   scroll: { calls: [] as number[] },
+  navigations: [] as { mode: "push" | "replace"; url: string; options: { scroll?: boolean } | undefined }[],
 }));
 
 vi.mock("next-intl", async () => await vi.importActual("next-intl"));
@@ -55,11 +60,13 @@ vi.mock("next/navigation", async () => {
   };
   const notify = () => h.listeners.forEach((cb) => cb());
   const router = {
-    push: (url: string) => {
+    push: (url: string, options?: { scroll?: boolean }) => {
+      h.navigations.push({ mode: "push", url, options });
       window.history.pushState(null, "", url);
       notify();
     },
-    replace: (url: string) => {
+    replace: (url: string, options?: { scroll?: boolean }) => {
+      h.navigations.push({ mode: "replace", url, options });
       window.history.replaceState(null, "", url);
       notify();
     },
@@ -224,7 +231,7 @@ function setDefaults() {
     want.filter((id) => !h.missing.has(id)).map((id) => ({ id, filename: `${id}.jpg` }))) as any);
   vi.mocked(mapModule.createPhotoMap).mockImplementation((async (_el: HTMLElement, options: any) => {
     h.mapOptions.current = options;
-    const handle = { setPoints: vi.fn(), destroy: vi.fn() };
+    const handle = { setPoints: vi.fn(), setSelected: vi.fn(), destroy: vi.fn() };
     h.handles.push(handle);
     return handle;
   }) as any);
@@ -266,6 +273,12 @@ class FakeIntersectionObserver {
   }
 }
 
+class IdleResizeObserver {
+  observe() {}
+  unobserve() {}
+  disconnect() {}
+}
+
 beforeEach(() => {
   data = { family: familyData(), work: WORK };
   h.drive.current = "family";
@@ -275,6 +288,7 @@ beforeEach(() => {
   h.handles.length = 0;
   h.mapOptions.current = null;
   h.scroll.calls.length = 0;
+  h.navigations.length = 0;
   sessionStorage.clear();
   vi.mocked(api.fetchMonths).mockReset();
   vi.mocked(api.fetchDays).mockReset();
@@ -285,6 +299,7 @@ beforeEach(() => {
   vi.mocked(mapModule.createPhotoMap).mockReset();
   setDefaults();
   vi.stubGlobal("IntersectionObserver", FakeIntersectionObserver);
+  vi.stubGlobal("ResizeObserver", IdleResizeObserver);
 
   const origPush = window.history.pushState.bind(window.history);
   const origReplace = window.history.replaceState.bind(window.history);
@@ -1513,5 +1528,424 @@ describe("the scope line: the drive and its photo count on either view", () => {
     vi.mocked(api.fetchPoints).mockImplementation(() => new Promise(() => {}));
     await settled("?view=map");
     expect(await screen.findByText("このドライブでは使えません")).toBeInTheDocument();
+  });
+});
+
+// ---------------------------------------------------------------- review round 1
+
+const SIDEBAR_URL = () => `/drive/${h.drive.current}/addons/photo_diary`;
+const scopeLine = () => screen.getByText(/^family/).textContent;
+
+describe("the open list and the selected point on the map", () => {
+  const selections = () => h.handles[0].setSelected.mock.calls.map((c) => c[0]);
+
+  it("a click selects the point's photos, and closing the list clears the selection", async () => {
+    await openMap();
+    await clickPoint(point([0, 1]));
+    await waitFor(() => expect(renderedIds()).toEqual(["a0", "a1"]));
+    expect(selections().at(-1)).toEqual(["a0", "a1"]);
+    await click(screen.getByRole("button", { name: "閉じる" }));
+    expect(selections().at(-1)).toBeNull();
+  });
+
+  it("a restored list is selected on the map that is created for it", async () => {
+    saveState("family", { pointIds: ["a0", "gone", "a2"] });
+    await settled("?view=map");
+    await waitFor(() => expect(mapModule.createPhotoMap).toHaveBeenCalled());
+    expect(h.mapOptions.current!.selected).toEqual(["a0", "a2"]);
+  });
+
+  it("a list that becomes empty after a refresh clears the selection", async () => {
+    await openMap();
+    await clickPoint(point([0, 1]));
+    await waitFor(() => expect(renderedIds()).toHaveLength(2));
+    data.family.points = data.family.points.filter((p) => p.file_id !== "a0" && p.file_id !== "a1");
+    await click(screen.getAllByText("mock-refresh")[0]);
+    await waitFor(() => expect(renderedIds()).toEqual([]));
+    expect(selections().at(-1)).toBeNull();
+  });
+
+  it("a refresh that drops a photo selects what is left of the list", async () => {
+    await openMap();
+    await clickPoint(point([0, 1, 2]));
+    await waitFor(() => expect(renderedIds()).toHaveLength(3));
+    data.family.points = data.family.points.filter((p) => p.file_id !== "a1");
+    await click(screen.getAllByText("mock-refresh")[0]);
+    await waitFor(() => expect(renderedIds()).toEqual(["a0", "a2"]));
+    expect(selections().at(-1)).toEqual(["a0", "a2"]);
+  });
+
+  it("another point of the same size replaces the list", async () => {
+    await openMap();
+    await clickPoint(["a0"]);
+    await waitFor(() => expect(renderedIds()).toEqual(["a0"]));
+    await clickPoint(["a1"]);
+    await waitFor(() => expect(renderedIds()).toEqual(["a1"]));
+    await clickPoint(["a2", "a3"]);
+    await waitFor(() => expect(renderedIds()).toEqual(["a2", "a3"]));
+    await clickPoint(["a3", "a4"]);
+    await waitFor(() => expect(renderedIds()).toEqual(["a3", "a4"]));
+  });
+});
+
+describe("the map's lifetime", () => {
+  it("leaving the page removes the map", async () => {
+    const { unmount } = await openMap();
+    unmount();
+    expect(h.handles[0].destroy).toHaveBeenCalledTimes(1);
+  });
+
+  it("leaving the page while the map is being made removes it once it exists", async () => {
+    const slow = deferred<unknown>();
+    vi.mocked(mapModule.createPhotoMap).mockImplementationOnce((async () => slow.promise) as any);
+    const { unmount } = await settled("?view=map");
+    await waitFor(() => expect(mapModule.createPhotoMap).toHaveBeenCalled());
+    unmount();
+    const handle = { setPoints: vi.fn(), setSelected: vi.fn(), destroy: vi.fn() };
+    await act(async () => slow.resolve(handle));
+    expect(handle.destroy).toHaveBeenCalledTimes(1);
+  });
+
+  it("points that change while the map is being made reach the map that results", async () => {
+    saveState("family", { pointIds: ["a0", "a1"] });
+    const slow = deferred<unknown>();
+    vi.mocked(mapModule.createPhotoMap).mockImplementationOnce((async () => slow.promise) as any);
+    await settled("?view=map");
+    await waitFor(() => expect(renderedIds()).toEqual(["a0", "a1"]));
+    const next = data.family.points.filter((p) => p.file_id !== "a2");
+    data.family.points = next;
+    await click(screen.getAllByText("mock-refresh")[0]);
+    await waitFor(() => expect(api.fetchPoints).toHaveBeenCalledTimes(2));
+    const handle = { setPoints: vi.fn(), setSelected: vi.fn(), destroy: vi.fn() };
+    await act(async () => slow.resolve(handle));
+    expect(handle.setPoints).toHaveBeenCalledWith(next);
+  });
+
+  it("a map is not made while its view is hidden, and is made when the view is shown", async () => {
+    const slow = deferred<{ points: Point[] }>();
+    vi.mocked(api.fetchPoints).mockImplementationOnce(() => slow.promise);
+    await settled("?view=map");
+    await click(tab("カレンダー"));
+    await act(async () => slow.resolve({ points: data.family.points }));
+    await flush();
+    expect(mapModule.createPhotoMap).not.toHaveBeenCalled();
+    await click(tab("地図"));
+    await waitFor(() => expect(mapModule.createPhotoMap).toHaveBeenCalledTimes(1));
+  });
+
+  it("a map that was being made when its view was left is made again when it is shown", async () => {
+    const slow = deferred<unknown>();
+    vi.mocked(mapModule.createPhotoMap).mockImplementationOnce((async () => slow.promise) as any);
+    await settled("?view=map");
+    await waitFor(() => expect(mapModule.createPhotoMap).toHaveBeenCalledTimes(1));
+    await click(tab("カレンダー"));
+    const stale = { setPoints: vi.fn(), setSelected: vi.fn(), destroy: vi.fn() };
+    await act(async () => slow.resolve(stale));
+    expect(stale.destroy).toHaveBeenCalledTimes(1);
+    await click(tab("地図"));
+    await waitFor(() => expect(mapModule.createPhotoMap).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(h.handles).toHaveLength(1));
+  });
+});
+
+describe("a restored list on the map", () => {
+  it("is restored once: closing it and entering the map again does not reopen it", async () => {
+    saveState("family", { pointIds: ["a0", "a1"] });
+    await settled("?view=map");
+    await waitFor(() => expect(renderedIds()).toEqual(["a0", "a1"]));
+    await click(screen.getByRole("button", { name: "閉じる" }));
+    await click(tab("カレンダー"));
+    await flush();
+    await click(tab("地図"));
+    await waitFor(() => expect(api.fetchPoints).toHaveBeenCalledTimes(2));
+    await flush();
+    expect(renderedIds()).toEqual([]);
+  });
+
+  it("does not hand its saved depth and position to the next point that is opened", async () => {
+    saveState("family", { pointIds: allIds(), list: { loaded: 50, scrollY: 640 }, listView: "map" });
+    await settled("?view=map");
+    await waitFor(() => expect(renderedIds()).toHaveLength(50));
+    await waitFor(() => expect(h.scroll.calls).toContain(640));
+    // The restore's second scroll is a frame behind; let it land first.
+    await act(async () => void (await new Promise((r) => setTimeout(r, 100))));
+    h.scroll.calls.length = 0;
+    vi.mocked(coreApi.batchGetFiles).mockClear();
+    await clickPoint(["b0", "b1"]);
+    await waitFor(() => expect(renderedIds()).toEqual(["b0", "b1"]));
+    await flush();
+    expect(h.scroll.calls).not.toContain(640);
+    expect(vi.mocked(coreApi.batchGetFiles).mock.calls[0][0]).toEqual(["b0", "b1"]);
+  });
+
+  it("is refetched when the photos are renamed: the same ids, new names", async () => {
+    await openMap();
+    await clickPoint(point([0, 1]));
+    await waitFor(() => expect(renderedIds()).toEqual(["a0", "a1"]));
+    vi.mocked(coreApi.batchGetFiles).mockClear();
+    await click(screen.getAllByText("mock-refresh")[0]);
+    await waitFor(() => expect(coreApi.batchGetFiles).toHaveBeenCalled());
+    expect(vi.mocked(coreApi.batchGetFiles).mock.calls.flatMap((c) => c[0])).toEqual(["a0", "a1"]);
+  });
+});
+
+describe("a write made from the map's list", () => {
+  it("is reflected in the scope line's photo count", async () => {
+    await openMap("?view=map");
+    await waitFor(() => expect(scopeLine()).toBe("family · 142枚"));
+    await clickPoint(point([0, 1]));
+    await waitFor(() => expect(renderedIds()).toHaveLength(2));
+    data.family.months = [{ month: "2026-10", count: 100 }];
+    data.family.undated_count = 0;
+    await click(screen.getAllByText("mock-refresh")[0]);
+    await waitFor(() => expect(scopeLine()).toBe("family · 100枚"));
+  });
+});
+
+describe("the calendar's own count and the month it lands on", () => {
+  it("the scope line has the photo count on the calendar view", async () => {
+    await settled();
+    await waitFor(() => expect(scopeLine()).toBe("family · 142枚"));
+  });
+
+  it("closing a list in an older month keeps that month", async () => {
+    await settled("?month=2026-08&date=2026-08-15");
+    await waitFor(() => expect(renderedIds()).toHaveLength(5));
+    await click(screen.getByRole("button", { name: "閉じる" }));
+    await waitFor(() => expect(renderedIds()).toEqual([]));
+    expect(window.location.search).toBe("?month=2026-08");
+    expect(await day("8月15日 5枚")).toBeInTheDocument();
+  });
+
+  it("next replaces the entry as previous does", async () => {
+    await settled("?month=2025-12");
+    await day("12月24日 2枚");
+    pushSpy.mockClear();
+    replaceSpy.mockClear();
+    await click(screen.getByRole("button", { name: "次の月" }));
+    await day("8月15日 5枚");
+    expect(pushSpy).not.toHaveBeenCalled();
+    expect(replaceSpy).toHaveBeenCalledTimes(1);
+    expect(window.location.search).toBe("?month=2026-08");
+  });
+
+  it("the days of the month left are not drawn while a failed month shows its error", async () => {
+    await settled();
+    await day("10月3日 5枚");
+    vi.mocked(api.fetchDays).mockRejectedValueOnce(apiError(500));
+    await click(screen.getByRole("button", { name: "前の月" }));
+    expect(await screen.findByText("読み込めませんでした")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "10月3日 5枚" })).toBeNull();
+  });
+
+  it("a day opened after another is a new list: the first's photos are not shown under it", async () => {
+    await settled();
+    await click(await day("10月3日 5枚"));
+    await waitFor(() => expect(renderedIds()).toHaveLength(5));
+    const slow = deferred<{ file_ids: string[]; total: number }>();
+    vi.mocked(api.fetchPhotos).mockImplementationOnce(() => slow.promise);
+    await click(screen.getByRole("button", { name: "10月11日 27枚" }));
+    await flush();
+    expect(renderedIds()).toEqual([]);
+    await act(async () => slow.reject(apiError(500)));
+    await flush();
+    expect(renderedIds()).toEqual([]);
+    expect(screen.getByText("読み込めませんでした")).toBeInTheDocument();
+  });
+
+  it("a months answer that arrives after the viewer moved to the map leaves the view alone", async () => {
+    data.family.undated_count = 0;
+    const slow = deferred<{ months: { month: string; count: number }[]; undated_count: number }>();
+    vi.mocked(api.fetchMonths).mockImplementationOnce(() => slow.promise);
+    await settled("?undated=true");
+    await click(tab("地図"));
+    expect(window.location.search).toContain("view=map");
+    await act(async () => slow.resolve({ months: data.family.months, undated_count: 0 }));
+    await flush();
+    expect(window.location.search).toContain("view=map");
+    expect(window.location.search).toContain("undated=true");
+  });
+});
+
+describe("navigation the page makes", () => {
+  it("pressing the tab of the view on screen adds no entry", async () => {
+    await settled();
+    await day("10月3日 5枚");
+    pushSpy.mockClear();
+    await click(tab("カレンダー"));
+    expect(pushSpy).not.toHaveBeenCalled();
+    expect(h.navigations).toEqual([]);
+  });
+
+  it("every navigation leaves the scroll position where it is", async () => {
+    await settled();
+    await click(await day("10月3日 5枚"));
+    await click(screen.getByRole("button", { name: /撮影日なし/ }));
+    await click(screen.getByRole("button", { name: "閉じる" }));
+    await click(screen.getByRole("button", { name: "前の月" }));
+    await click(tab("地図"));
+    await click(tab("カレンダー"));
+    expect(h.navigations.length).toBeGreaterThanOrEqual(6);
+    for (const navigation of h.navigations) expect(navigation.options).toEqual({ scroll: false });
+  });
+});
+
+describe("a URL with no query reached while the page stays mounted", () => {
+  const open = (url: string) =>
+    act(async () => {
+      window.history.pushState(null, "", url);
+    });
+
+  it("starts over: the saved state is cleared and the map begins with nothing open", async () => {
+    saveState("family", { center: [140, 36], zoom: 12, pointIds: ["a0", "a1"] });
+    await settled("?view=map");
+    await waitFor(() => expect(renderedIds()).toEqual(["a0", "a1"]));
+    await open(SIDEBAR_URL());
+    await flush();
+    expect(loadState("family")).toBeNull();
+    expect(tab("カレンダー")).toHaveAttribute("aria-selected", "true");
+    expect(h.handles[0].destroy).toHaveBeenCalled();
+    await click(tab("地図"));
+    await waitFor(() => expect(mapModule.createPhotoMap).toHaveBeenCalledTimes(2));
+    expect(h.mapOptions.current!.center).toBeUndefined();
+    expect(h.mapOptions.current!.selected).toBeUndefined();
+    await flush();
+    expect(renderedIds()).toEqual([]);
+  });
+
+  it("Back to the no-query entry starts over as well", async () => {
+    await settled();
+    await click(tab("地図"));
+    await waitFor(() => expect(mapModule.createPhotoMap).toHaveBeenCalled());
+    await clickPoint(point([0, 1]));
+    await waitFor(() => expect(renderedIds()).toEqual(["a0", "a1"]));
+    await goBack();
+    await flush();
+    expect(loadState("family")).toBeNull();
+    await click(tab("地図"));
+    await waitFor(() => expect(mapModule.createPhotoMap).toHaveBeenCalledTimes(2));
+    await flush();
+    expect(renderedIds()).toEqual([]);
+  });
+
+  it("brings back a page that said not available, so it is fetched again", async () => {
+    vi.mocked(api.fetchMonths).mockRejectedValueOnce(apiError(404));
+    await settled("?month=2026-10");
+    expect(await screen.findByText("このドライブでは使えません")).toBeInTheDocument();
+    await open(SIDEBAR_URL());
+    expect(await day("10月3日 5枚")).toBeInTheDocument();
+  });
+
+  it("is not a fresh start when the page's own switch to the calendar ends on it", async () => {
+    await openMap();
+    await clickPoint(point([0, 1]));
+    await waitFor(() => expect(renderedIds()).toEqual(["a0", "a1"]));
+    await click(tab("カレンダー"));
+    expect(window.location.search).toBe("");
+    expect(loadState("family")?.pointIds).toEqual(["a0", "a1"]);
+    await click(tab("地図"));
+    await flush();
+    expect(renderedIds()).toEqual(["a0", "a1"]);
+    expect(mapModule.createPhotoMap).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("saving what is left", () => {
+  it("a closed point's list does not come back on reload", async () => {
+    const first = await openMap();
+    await clickPoint(point([0, 1]));
+    await waitFor(() => expect(renderedIds()).toHaveLength(2));
+    await click(screen.getByRole("button", { name: "閉じる" }));
+    first.unmount();
+    expect(loadState("family")?.pointIds).toBeUndefined();
+    await settled("?view=map");
+    await waitFor(() => expect(mapModule.createPhotoMap).toHaveBeenCalledTimes(2));
+    await flush();
+    expect(renderedIds()).toEqual([]);
+  });
+
+  it("a day opened after a scrolled one does not take the earlier day's depth and position", async () => {
+    saveState("family", { list: { loaded: 80, scrollY: 640 } });
+    const { unmount } = await settled("?month=2026-10&date=2026-10-20");
+    await waitFor(() => expect(renderedIds()).toHaveLength(80));
+    await click(await day("10月3日 5枚"));
+    await waitFor(() => expect(renderedIds()).toHaveLength(5));
+    unmount();
+    expect(loadState("family")).toBeNull();
+    // The first list's second scroll is a frame behind; let it land first.
+    await act(async () => void (await new Promise((r) => setTimeout(r, 100))));
+    h.scroll.calls.length = 0;
+    await settled("?month=2026-10&date=2026-10-03");
+    await waitFor(() => expect(renderedIds()).toHaveLength(5));
+    expect(h.scroll.calls).not.toContain(640);
+  });
+
+  it("the list's depth and position are saved when the page is hidden, with no unmount", async () => {
+    Object.defineProperty(window, "scrollY", { configurable: true, get: () => 700 });
+    try {
+      await settled("?month=2026-10&date=2026-10-20");
+      await waitFor(() => expect(renderedIds()).toHaveLength(40));
+      await loadMore();
+      await waitFor(() => expect(renderedIds()).toHaveLength(80));
+      expect(loadState("family")).toBeNull();
+      act(() => void window.dispatchEvent(new Event("pagehide")));
+      expect(loadState("family")?.list).toEqual({ loaded: 80, scrollY: 700 });
+    } finally {
+      delete (window as any).scrollY;
+    }
+  });
+});
+
+describe("lists deeper than the core's batch", () => {
+  it("a list restored 250 deep is read in pages and batches of at most 100", async () => {
+    const big = ids("big", 250);
+    data.family.photos["2026-10-20"] = big;
+    data.family.days["2026-10"] = [{ date: "2026-10-20", count: 250 }];
+    saveState("family", { list: { loaded: 250, scrollY: 0 } });
+    await settled("?month=2026-10&date=2026-10-20");
+    await waitFor(() => expect(renderedIds()).toEqual(big));
+    for (const [, query] of vi.mocked(api.fetchPhotos).mock.calls) expect((query as any).limit).toBeLessThanOrEqual(100);
+    for (const [batch] of vi.mocked(coreApi.batchGetFiles).mock.calls) expect(batch.length).toBeLessThanOrEqual(100);
+    expect(vi.mocked(coreApi.batchGetFiles).mock.calls.flatMap((c) => c[0])).toEqual(big);
+  });
+
+  it("a map list restored 250 deep is read in batches of at most 100", async () => {
+    const many = ids("m", 250);
+    data.family.points = many.map((id, i) => ({
+      file_id: id,
+      lat: 1,
+      lon: 1,
+      taken_at: `2026-10-03T10:${String(Math.floor(i / 60)).padStart(2, "0")}:${String(i % 60).padStart(2, "0")}`,
+    }));
+    saveState("family", { pointIds: many, list: { loaded: 250, scrollY: 0 }, listView: "map" });
+    await settled("?view=map");
+    await waitFor(() => expect(renderedIds()).toEqual(many));
+    for (const [batch] of vi.mocked(coreApi.batchGetFiles).mock.calls) expect(batch.length).toBeLessThanOrEqual(100);
+  });
+});
+
+describe("the month picker on a coarse pointer", () => {
+  it("has rows of at least 44 px there and a rounded-2xl menu", async () => {
+    await settled();
+    await day("10月3日 5枚");
+    await click(screen.getByRole("button", { name: "月を選ぶ" }));
+    const rows = screen.getAllByRole("button", { name: /2026年10月|2026年8月|2025年12月/ }).filter((b) => b.closest("li"));
+    expect(rows.length).toBe(3);
+    for (const row of rows) expect(row.className).toContain("pointer-coarse:min-h-11");
+    expect(rows[0].closest("ul")!.className).toContain("rounded-2xl");
+  });
+});
+
+describe("a point's sections: which grid may still have more", () => {
+  it("only the last section shown asks for more", async () => {
+    await openMap();
+    await clickPoint(allIds());
+    await waitFor(() => expect(renderedIds()).toHaveLength(40));
+    const grids = screen.getAllByTestId("file-grid");
+    expect(grids.length).toBeGreaterThanOrEqual(2);
+    expect(grids.map((g) => g.getAttribute("data-more"))).toEqual([
+      ...grids.slice(0, -1).map(() => "false"),
+      "true",
+    ]);
   });
 });

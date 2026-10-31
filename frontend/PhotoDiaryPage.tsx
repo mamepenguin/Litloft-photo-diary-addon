@@ -69,6 +69,8 @@ function Session({ drive }: { drive: string }) {
   // known stays on screen meanwhile and when the read fails. An answer to an
   // earlier entry is dropped, so a slow one cannot overwrite a newer count.
   const onMap = url.view === "map";
+  const [countToken, setCountToken] = useState(0);
+  const countChanged = useCallback(() => setCountToken((value) => value + 1), []);
   useEffect(() => {
     if (!onMap) return;
     let current = true;
@@ -83,7 +85,7 @@ function Session({ drive }: { drive: string }) {
     return () => {
       current = false;
     };
-  }, [drive, onMap]);
+  }, [drive, onMap, countToken]);
 
   // A URL with no query is a fresh start however it was reached.
   const [initial] = useState(() => {
@@ -116,6 +118,7 @@ function Session({ drive }: { drive: string }) {
       state.listView = view;
     }
     if (Object.keys(state).length > 0) saveState(drive, state);
+    else clearState(drive);
   }, [drive]);
 
   // A layout cleanup, because it runs before the removed tree leaves the
@@ -166,9 +169,37 @@ function Session({ drive }: { drive: string }) {
     mapRestore.current = { ...mapRestore.current, list: undefined };
   }, []);
 
+  // A URL with no query, reached while the page stays mounted (the sidebar
+  // row, Back), starts over: both views are made again. The page's own
+  // navigation can also end on such a URL, the calendar after the map, and
+  // that one keeps what the views hold.
+  const [epoch, setEpoch] = useState(0);
+  const lastSearch = useRef(search);
+  const ownTarget = useRef<string | null>(null);
+  useLayoutEffect(() => {
+    const before = lastSearch.current;
+    lastSearch.current = search;
+    if (before === search) return;
+    const own = ownTarget.current === search;
+    ownTarget.current = null;
+    if (own || search !== "") return;
+    clearState(drive);
+    saved.current = {};
+    calendarRestore.current = null;
+    mapRestore.current = {};
+    setNotAvailable(false);
+    setSeen({ calendar: true, map: false });
+    setEpoch((value) => value + 1);
+  }, [search, drive]);
+
+  const searchRef = useRef(search);
+  searchRef.current = search;
   const go = useCallback(
     (mode: "push" | "replace", next: Partial<PageUrl>) => {
-      const href = `${pathname}${buildPageQuery(next)}`;
+      const query = buildPageQuery(next);
+      const target = new URLSearchParams(query).toString();
+      ownTarget.current = target === searchRef.current ? null : target;
+      const href = `${pathname}${query}`;
       if (mode === "push") router.push(href, { scroll: false });
       else router.replace(href, { scroll: false });
     },
@@ -210,6 +241,7 @@ function Session({ drive }: { drive: string }) {
       {(url.view === "calendar" || seen.calendar) && (
         <div hidden={url.view !== "calendar"}>
           <CalendarView
+            key={epoch}
             drive={drive}
             active={url.view === "calendar"}
             url={url}
@@ -225,6 +257,7 @@ function Session({ drive }: { drive: string }) {
       {(url.view === "map" || seen.map) && (
         <div hidden={url.view !== "map"}>
           <MapView
+            key={epoch}
             drive={drive}
             active={url.view === "map"}
             restore={mapRestore.current}
@@ -233,6 +266,7 @@ function Session({ drive }: { drive: string }) {
             onPointIds={setPointIds}
             onRestored={mapRestored}
             onNotAvailable={onNotAvailable}
+            onRefresh={countChanged}
           />
         </div>
       )}
