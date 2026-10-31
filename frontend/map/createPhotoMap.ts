@@ -105,15 +105,28 @@ let failures = 0;
 // answers a second import of it without asking the network. A retry therefore
 // asks for another URL, which the server answers with the same file; the first
 // attempt keeps the bare URL, which the browser's cache holds once it loads.
-const libraryUrl = () => (failures === 0 ? LIBRARY_URL : `${LIBRARY_URL}?retry=${failures}`);
+const withRetry = (url: string) => (failures === 0 ? url : `${url}?retry=${failures}`);
+
+// The worker is started by the library, which reports nothing when its file
+// fails to load, so the file is asked for here first and the worker then
+// starts from the browser's cache.
+async function fetchWorker(url: string): Promise<void> {
+  const response = await fetch(url);
+  if (!response.ok) throw new Error(`The MapLibre worker failed to load (${response.status})`);
+  await response.arrayBuffer();
+}
 
 function loadLibrary(): Promise<MapLibreModule> {
   if (!library) {
     // A runtime import of a served file: the frontend image installs only the
     // core's package.json, so the bundlers must leave this specifier alone.
-    library = import(/* webpackIgnore: true */ /* turbopackIgnore: true */ /* @vite-ignore */ libraryUrl())
-      .then((module: MapLibreModule) => {
-        module.setWorkerUrl(new URL(WORKER_URL, document.baseURI).href);
+    const workerUrl = new URL(withRetry(WORKER_URL), document.baseURI).href;
+    library = Promise.all([
+      import(/* webpackIgnore: true */ /* turbopackIgnore: true */ /* @vite-ignore */ withRetry(LIBRARY_URL)),
+      fetchWorker(workerUrl),
+    ])
+      .then(([module]: [MapLibreModule, void]) => {
+        module.setWorkerUrl(workerUrl);
         return module;
       })
       .catch((error: unknown) => {
