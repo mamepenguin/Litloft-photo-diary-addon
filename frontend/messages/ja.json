@@ -1,6 +1,8 @@
 {
   "photoDiary": {
-    "nav": { "label": "フォトダイアリー" },
+    "nav": {
+      "label": "フォトダイアリー"
+    },
     "loadError": "読み込めませんでした",
     "retry": "再試行",
     "notAvailable": "このドライブでは使えません",
@@ -9,9 +11,25 @@
     "noLocatedPhotos": "位置情報のある写真はありません",
     "tileError": "地図を読み込めません",
     "noWebgl": "この環境では地図を表示できません",
-    "view": { "calendar": "カレンダー", "map": "地図" },
-    "month": { "previous": "前の月", "next": "次の月", "choose": "月を選ぶ" },
+    "view": {
+      "calendar": "カレンダー",
+      "map": "地図",
+      "label": "表示"
+    },
+    "month": {
+      "previous": "前の月",
+      "next": "次の月",
+      "choose": "月を選ぶ"
+    },
     "close": "閉じる",
-    "undated": "撮影日なし"
+    "undated": "撮影日なし",
+    "scope": "{drive} · {count}枚",
+    "calendar": {
+      "dayLabel": "{date} {count}枚"
+    },
+    "list": {
+      "count": "{count}枚",
+      "headingCount": "{count}枚"
+    }
   }
 }
