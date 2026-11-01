@@ -25,10 +25,23 @@
     "undated": "No capture date",
     "scope": "{drive} · {count, plural, one {# photo} other {# photos}}",
     "calendar": {
-      "dayLabel": "{date}, {count, plural, one {# photo} other {# photos}}"
+      "dayLabel": "{date}, {count, plural, one {# photo} other {# photos}}",
+      "dayLabelNoted": "{date}, {count, plural, one {# photo} other {# photos}}, has a note",
+      "dayLabelNote": "{date}, has a note",
+      "today": "Today"
     },
     "list": {
       "headingCount": "· {count, plural, one {# photo} other {# photos}}"
+    },
+    "note": {
+      "write": "Write a note",
+      "edit": "Edit",
+      "start": "Could not start the note",
+      "rescan": "A file with this name already exists. Rescan the drive",
+      "trashed": "This day's note is in the trash",
+      "restore": "Restore",
+      "missing": "The file for this day's note cannot be found",
+      "restoreFailed": "Could not restore"
     }
   }
 }

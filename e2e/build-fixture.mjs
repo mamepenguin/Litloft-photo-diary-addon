@@ -34,6 +34,7 @@ export default async function buildFixture() {
     { find: /^next\/link$/, replacement: join(here, "fixture/page/link.tsx") },
     { find: /^@\/components\/CurrentDriveProvider$/, replacement: join(here, "fixture/page/drive.ts") },
     { find: /^@\/components\/FileGrid$/, replacement: join(here, "fixture/page/FileGrid.tsx") },
+    { find: /^@\/components\/AddonSlotsProvider$/, replacement: join(here, "fixture/page/addonSlots.ts") },
     { find: "@", replacement: join(coreFrontend, "src") },
   ];
   const common = {

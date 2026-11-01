@@ -53,7 +53,10 @@ EXPECTED = {
         "No photos with a location", "Map tiles could not be loaded",
         "The map cannot be shown on this device", "Calendar", "Map",
         "Previous month", "Next month", "Choose month", "Close",
-        "No capture date",
+        "No capture date", "Write a note", "Edit", "Today", "Could not start the note",
+        "A file with this name already exists. Rescan the drive",
+        "This day's note is in the trash", "Restore", "Could not restore",
+        "The file for this day's note cannot be found",
     ],
     "ja": [
         "読み込めませんでした", "再試行", "このドライブでは使えません",
@@ -61,6 +64,10 @@ EXPECTED = {
         "位置情報のある写真はありません", "地図を読み込めません",
         "この環境では地図を表示できません", "カレンダー", "地図",
         "前の月", "次の月", "月を選ぶ", "閉じる", "撮影日なし",
+        "メモを書く", "編集", "今日", "メモを作成できませんでした",
+        "同じ名前のファイルがあります。ドライブを再スキャンしてください",
+        "この日のメモはゴミ箱にあります", "元に戻す", "元に戻せませんでした",
+        "この日のメモのファイルが見つかりません",
     ],
 }
 

@@ -26,6 +26,14 @@ type Props = {
   /** Where the list scrolls: the page, or the panel that holds it. */
   scroller: "window" | "panel";
   restore?: { loaded: number; scrollY: number };
+  /** Drawn between the heading and the photos. */
+  note?: ReactNode;
+  /**
+   * Whether `note` has reached the height it keeps. The saved position is
+   * applied only then, so content arriving above the photos cannot move them
+   * afterwards.
+   */
+  noteSettled?: boolean;
   positionRef: MutableRefObject<ListPosition | null>;
   heading?: (total: number | null) => ReactNode;
   emptyMessage?: string;
@@ -45,6 +53,8 @@ export function PhotoList({
   active,
   scroller,
   restore,
+  note,
+  noteSettled = true,
   positionRef,
   heading,
   emptyMessage,
@@ -72,6 +82,8 @@ export function PhotoList({
   const loadedRef = useRef(loaded);
   loadedRef.current = loaded;
   const pendingRestore = useRef(restore);
+  const restoreFrame = useRef(0);
+  useEffect(() => () => cancelAnimationFrame(restoreFrame.current), []);
 
   const readScroll = () => (scroller === "window" ? window.scrollY : (panel.current?.scrollTop ?? 0));
   const readScrollRef = useRef(readScroll);
@@ -90,16 +102,16 @@ export function PhotoList({
 
   useLayoutEffect(() => {
     const target = pendingRestore.current;
-    if (!target || phase !== "ready") return;
+    if (!target || phase !== "ready" || !noteSettled) return;
     pendingRestore.current = undefined;
     const apply = () => {
       if (scroller === "window") window.scrollTo({ top: target.scrollY });
       else if (panel.current) panel.current.scrollTop = target.scrollY;
     };
     apply();
-    requestAnimationFrame(apply);
+    restoreFrame.current = requestAnimationFrame(apply);
     onRestored();
-  }, [phase, scroller, onRestored]);
+  }, [phase, noteSettled, scroller, onRestored]);
 
   const empty = phase === "ready" && total === 0;
   useEffect(() => {
@@ -132,6 +144,8 @@ export function PhotoList({
           {t("close")}
         </Button>
       </div>
+
+      {note}
 
       {phase === "failed" && <LoadError onRetry={retry} />}
 

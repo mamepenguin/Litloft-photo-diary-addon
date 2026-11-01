@@ -67,7 +67,10 @@ def test_pd001_days_oldest_first_only_days_with_photos(env):
     lib.add(taken="2026-10-03T09:00:00")
     lib.add(taken="2026-11-01T00:00:00")
     assert days(client, "2026-10") == {
-        "days": [{"date": "2026-10-03", "count": 2}, {"date": "2026-10-20", "count": 1}]
+        "days": [
+            {"date": "2026-10-03", "count": 2, "has_note": False},
+            {"date": "2026-10-20", "count": 1, "has_note": False},
+        ]
     }
 
 
@@ -99,7 +102,7 @@ def test_pd001_future_date_shown_as_written(env):
 def test_i1_late_evening_stays_on_its_own_day(env):
     client, lib, *_ = env
     fid = lib.add(taken="2026-10-03T23:30:00")
-    assert days(client, "2026-10")["days"] == [{"date": "2026-10-03", "count": 1}]
+    assert days(client, "2026-10")["days"] == [{"date": "2026-10-03", "count": 1, "has_note": False}]
     assert photos(client, date="2026-10-03")["file_ids"] == [fid]
     assert photos(client, date="2026-10-04") == {"file_ids": [], "total": 0}
     assert photos(client, date="2026-10-02") == {"file_ids": [], "total": 0}
@@ -211,7 +214,7 @@ def test_i4_trashed_missing_and_non_image_are_excluded(env):
     lib.add(taken=None, file_type="video")
     m = months(client)
     assert m == {"months": [{"month": "2026-10", "count": 1}], "undated_count": 0}
-    assert days(client, "2026-10")["days"] == [{"date": "2026-10-03", "count": 1}]
+    assert days(client, "2026-10")["days"] == [{"date": "2026-10-03", "count": 1, "has_note": False}]
     assert photos(client, date="2026-10-03") == {"file_ids": [keep], "total": 1}
     assert photos(client, undated="true") == {"file_ids": [], "total": 0}
 

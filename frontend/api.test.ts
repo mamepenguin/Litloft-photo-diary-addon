@@ -4,6 +4,7 @@ import {
   fetchDays,
   fetchMapConfig,
   fetchMonths,
+  fetchNote,
   fetchPhotos,
   fetchPoints,
 } from "./api";
@@ -92,6 +93,18 @@ describe("api: wire shape", () => {
   });
 });
 
+describe("api: note", () => {
+  it("SPEC-PD-005: fetchNote is a GET of /note with the date and returns the body", async () => {
+    const body = { state: "active", file_id: "n1" };
+    reply(body);
+    await expect(fetchNote("family", "2026-11-01")).resolves.toEqual(body);
+    const c = lastCall();
+    expect(c.method).toBe("GET");
+    expect(c.url.pathname).toBe(`${BASE}/note`);
+    expect(c.url.searchParams.get("date")).toBe("2026-11-01");
+  });
+});
+
 describe("api: drive header", () => {
   const calls: [string, () => Promise<unknown>][] = [
     ["fetchMonths", () => fetchMonths("家族 写真/α")],
@@ -99,6 +112,7 @@ describe("api: drive header", () => {
     ["fetchPhotos", () => fetchPhotos("家族 写真/α", { date: "2026-10-03" })],
     ["fetchPoints", () => fetchPoints("家族 写真/α")],
     ["fetchMapConfig", () => fetchMapConfig("家族 写真/α")],
+    ["fetchNote", () => fetchNote("家族 写真/α", "2026-11-01")],
   ];
 
   it.each(calls)("SPEC-PD-003 I5: %s sends X-Lit-Drive percent-encoded", async (_name, call) => {
@@ -121,6 +135,7 @@ describe("api: errors", () => {
     ["fetchPhotos", () => fetchPhotos("family", { undated: true })],
     ["fetchPoints", () => fetchPoints("family")],
     ["fetchMapConfig", () => fetchMapConfig("family")],
+    ["fetchNote", () => fetchNote("family", "2026-11-01")],
   ];
 
   it.each(all)("SPEC-PD-003: %s rejects with ApiError carrying a 404", async (_name, call) => {

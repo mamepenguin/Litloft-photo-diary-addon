@@ -25,10 +25,23 @@
     "undated": "撮影日なし",
     "scope": "{drive} · {count}枚",
     "calendar": {
-      "dayLabel": "{date} {count}枚"
+      "dayLabel": "{date} {count}枚",
+      "dayLabelNoted": "{date}、{count}枚、メモあり",
+      "dayLabelNote": "{date}、メモあり",
+      "today": "今日"
     },
     "list": {
       "headingCount": "{count}枚"
+    },
+    "note": {
+      "write": "メモを書く",
+      "edit": "編集",
+      "start": "メモを作成できませんでした",
+      "rescan": "同じ名前のファイルがあります。ドライブを再スキャンしてください",
+      "trashed": "この日のメモはゴミ箱にあります",
+      "restore": "元に戻す",
+      "missing": "この日のメモのファイルが見つかりません",
+      "restoreFailed": "元に戻せませんでした"
     }
   }
 }

@@ -45,6 +45,11 @@ export async function serveApi(page: Page) {
   await page.route("**/api/addons/photo_diary/map-config", (route) =>
     route.fulfill(json({ tile_url: TILE_URL, attribution: "" })),
   );
+  await page.route("**/api/addons/photo_diary/note*", (route) => route.fulfill(json({ state: "none", file_id: null })));
+  await page.route("**/api/addons/status*", (route) => route.fulfill(json({ addons: { knowledge: {} }, slots: {} })));
+  await page.route("**/api/drives/*/addon-policies", (route) =>
+    route.fulfill(json({ addons: { knowledge: { default: true, features: { editor: true } } } })),
+  );
   await page.route("**/api/files/batch/get", (route) => {
     const { ids: want } = route.request().postDataJSON() as { ids: string[] };
     route.fulfill(json(want.map((id) => ({ id, filename: id }))));
