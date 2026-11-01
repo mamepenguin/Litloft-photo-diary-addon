@@ -450,7 +450,7 @@ export async function createPhotoMap(
   };
 
   const syncPins = () => {
-    if (dataPending || !loaded || !onScreen()) return;
+    if (dataPending || !onScreen() || !map.getSource("points")) return;
     const width = map.getCanvas().clientWidth;
     const height = map.getCanvas().clientHeight;
     const wanted = new Map<string, Seen>();
