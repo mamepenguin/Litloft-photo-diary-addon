@@ -96,6 +96,8 @@ export interface PhotoMap {
   setPoints(points: Point[]): void;
   /** Gives the pin that stands only for photos among `ids` its accent border. */
   setSelected(ids: string[] | null): void;
+  /** The view is going off screen: no pin is removed until the map has gone idle after it returns. */
+  pause(): void;
   /** The view is on screen again: applies a theme change that waited, and places the pins. */
   resume(): void;
   destroy(): void;
@@ -328,9 +330,10 @@ export async function createPhotoMap(
   // features read are the old ones or none, and a pin is neither added nor
   // removed on that evidence.
   let dataPending = true;
-  // After a view switch the tiles are those of the hidden map's small size until the
-  // map has gone idle at the real one, so a pin is not removed on what they hold.
+  // From the view going off screen until the map has gone idle at its real size again,
+  // the tiles are those of the hidden map's small size, so a pin is not removed on what they hold.
   let resuming = false;
+  let returned = false;
   let tileFailed = false;
   let reportedFailing = false;
   let verifyingTiles = false;
@@ -520,7 +523,7 @@ export async function createPhotoMap(
 
   const onIdle = () => {
     dataPending = false;
-    resuming = false;
+    if (returned && onScreen()) resuming = returned = false;
     syncPins();
     if (tileFailed) {
       tileFailed = false;
@@ -597,9 +600,15 @@ export async function createPhotoMap(
       selected = next;
       drawData();
     },
-    resume() {
-      // A hidden map is sized 400 by 300; its own observer has not given it the real size yet.
+    pause() {
       resuming = true;
+      returned = false;
+    },
+    resume() {
+      // A hidden map is sized 400 by 300, and its own observer can give it the real
+      // size before this runs, so `pause` has already held the removals.
+      resuming = true;
+      returned = true;
       map.resize();
       applyTheme();
       syncPins();

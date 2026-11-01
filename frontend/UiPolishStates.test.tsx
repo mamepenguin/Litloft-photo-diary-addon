@@ -178,13 +178,13 @@ const thumbs = () =>
   Array.from(document.body.querySelectorAll("img")).filter((i) => /\/api\/files\/[^/]+\/thumbnail/.test(i.getAttribute("src") ?? ""));
 
 
-const mapHandles: { setPoints: any; setSelected: any; resume: any; destroy: any }[] = [];
+const mapHandles: { setPoints: any; setSelected: any; resume: any; pause: any; destroy: any }[] = [];
 const mapOptions: { current: any } = { current: null };
 
 function mockMap() {
   vi.mocked(mapModule.createPhotoMap).mockImplementation((async (_el: HTMLElement, options: any) => {
     mapOptions.current = options;
-    const handle = { setPoints: vi.fn(), setSelected: vi.fn(), resume: vi.fn(), destroy: vi.fn() };
+    const handle = { setPoints: vi.fn(), setSelected: vi.fn(), resume: vi.fn(), pause: vi.fn(), destroy: vi.fn() };
     mapHandles.push(handle);
     return handle;
   }) as any);

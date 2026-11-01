@@ -228,6 +228,7 @@ export function MapView({
 
   useEffect(() => {
     if (active) handle.current?.resume();
+    else handle.current?.pause();
   }, [active]);
 
   useEffect(
