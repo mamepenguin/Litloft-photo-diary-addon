@@ -53,3 +53,9 @@ export function weekdayLabels(locale: string): string[] {
     format(utcDate(2026, 10, 4 + i), locale, { weekday: "short" }),
   );
 }
+
+/** Today on the browser's own clock, as the calendar writes dates. */
+export function localToday(now: Date = new Date()): string {
+  const pad = (value: number) => String(value).padStart(2, "0");
+  return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
+}

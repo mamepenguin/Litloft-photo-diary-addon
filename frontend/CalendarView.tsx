@@ -8,17 +8,25 @@ import { FileGrid } from "@/components/FileGrid";
 import { fetchDays, fetchMonths, fetchPhotos } from "./api";
 import { isNotFound } from "./lib/errors";
 import { LoadError } from "./LoadError";
-import { MonthGrid } from "./MonthGrid";
+import { MonthGrid, type DayInfo } from "./MonthGrid";
+import { NoteArea } from "./NoteArea";
 import { MonthPicker } from "./MonthPicker";
 import { PhotoList, type ListPosition } from "./PhotoList";
+import { useDayNote } from "./useDayNote";
+import { useEditorAvailable } from "./useEditorAvailable";
 import { useWide } from "./useWide";
-import { formatListDate, formatMonth } from "./lib/dates";
+import { formatListDate, formatMonth, localToday } from "./lib/dates";
 import { photoTotal } from "./lib/total";
 import type { PageUrl } from "./lib/pageUrl";
 import type { FetchIds } from "./usePagedPhotos";
 
 type Months = { months: { month: string; count: number }[]; undated_count: number };
-type Days = { month: string; counts: ReadonlyMap<string, number> };
+type Days = { month: string; byDate: ReadonlyMap<string, DayInfo> };
+
+// The editor autosaves after 2 s and sends its last save on leaving without
+// waiting for it, so the first read after coming back can overtake that save.
+const SECOND_READ_MS = 3000;
+const NO_DAYS: ReadonlyMap<string, DayInfo> = new Map();
 
 type Props = {
   drive: string;
@@ -71,9 +79,8 @@ export function CalendarView({
   const haveMonths = useRef(false);
   const haveDaysFor = useRef<string | null>(null);
 
-  const noDatedPhotos = months !== null && months.months.length === 0;
-  const month =
-    months === null || noDatedPhotos ? null : (url.month ?? months.months[0]?.month ?? null);
+  const nothingDated = months !== null && months.months.length === 0;
+  const month = months === null ? null : (url.month ?? months.months[0]?.month ?? null);
 
   useEffect(() => {
     if (!active) return;
@@ -97,13 +104,16 @@ export function CalendarView({
   }, [drive, active, token, report, onNotAvailable, onTotal]);
 
   useEffect(() => {
-    if (!active || month === null) return;
+    if (!active || month === null || nothingDated) return;
     const mine = ++daysRequest.current;
     fetchDays(drive, month).then(
       (result) => {
         if (mine !== daysRequest.current) return;
         haveDaysFor.current = month;
-        setDays({ month, counts: new Map(result.days.map((d) => [d.date, d.count])) });
+        setDays({
+          month,
+          byDate: new Map(result.days.map((d) => [d.date, { count: d.count, hasNote: d.has_note === true }])),
+        });
         setDaysFailedFor(null);
         report("days", true);
       },
@@ -114,13 +124,13 @@ export function CalendarView({
         else setDaysFailedFor(month);
       },
     );
-  }, [drive, active, month, token, report, onNotAvailable]);
+  }, [drive, active, month, nothingDated, token, report, onNotAvailable]);
 
   const undatedCount = months?.undated_count ?? 0;
   const listKind: "day" | "undated" | null =
     months === null
       ? null
-      : url.date && !noDatedPhotos
+      : url.date
         ? "day"
         : url.undated && undatedCount > 0
           ? "undated"
@@ -151,8 +161,26 @@ export function CalendarView({
   const previous = month ? monthList.find((m) => m.month < month) : undefined;
   const next = month ? [...monthList].reverse().find((m) => m.month > month) : undefined;
 
-  const daysForMonth = days && days.month === month ? days.counts : null;
+  const daysForMonth = nothingDated ? NO_DAYS : days && days.month === month ? days.byDate : null;
   const openDate = listKind === "day" ? url.date : null;
+
+  const editorAvailable = useEditorAvailable(drive);
+  const note = useDayNote({ drive, date: openDate, active, token, refresh, onNotAvailable });
+
+  const [secondReadDue, setSecondReadDue] = useState(url.date !== null);
+  useEffect(() => {
+    if (!active || !secondReadDue) return;
+    const timer = setTimeout(() => {
+      setSecondReadDue(false);
+      refresh();
+    }, SECOND_READ_MS);
+    return () => clearTimeout(timer);
+  }, [active, secondReadDue, refresh]);
+
+  const goToday = () => {
+    const today = localToday();
+    if (url.date !== today) go("push", { month: today.slice(0, 7), date: today });
+  };
 
   const closeList = () => go("push", { month });
   const closeEmptyUndated = useCallback(() => {
@@ -186,11 +214,13 @@ export function CalendarView({
                     <ChevronLeft size={16} aria-hidden="true" />
                   </Button>
                   <h2 className="min-w-0 text-lg font-bold text-text-primary">{formatMonth(month, locale)}</h2>
-                  <MonthPicker
-                    months={monthList}
-                    current={month}
-                    onChoose={(chosen) => go("replace", { month: chosen })}
-                  />
+                  {monthList.length > 0 && (
+                    <MonthPicker
+                      months={monthList}
+                      current={month}
+                      onChoose={(chosen) => go("replace", { month: chosen })}
+                    />
+                  )}
                   <Button
                     iconOnly
                     variant="ghost"
@@ -202,6 +232,9 @@ export function CalendarView({
                   </Button>
                 </>
               )}
+              <Button size="sm" variant="ghost" onClick={goToday}>
+                {t("calendar.today")}
+              </Button>
             </div>
 
             <div className="[grid-area:grid]">
@@ -211,7 +244,7 @@ export function CalendarView({
                 ) : (
                   <MonthGrid
                     month={month}
-                    counts={daysForMonth ?? new Map()}
+                    days={daysForMonth ?? new Map()}
                     openDate={openDate}
                     loading={!daysForMonth}
                     onPick={(date) => {
@@ -252,13 +285,19 @@ export function CalendarView({
               active={active}
               scroller="window"
               restore={restore ?? undefined}
+              note={
+                listKind === "day" ? (
+                  <NoteArea drive={drive} note={note} editorAvailable={editorAvailable} />
+                ) : undefined
+              }
+              noteSettled={listKind === "day" ? note.settled : undefined}
               positionRef={positionRef}
               emptyMessage={listKind === "day" ? t("noPhotosOnDay") : undefined}
               onEmpty={listKind === "undated" ? closeEmptyUndated : undefined}
               heading={(total) => (
                 <h2 className="text-lg font-bold text-text-primary">
                   {listKind === "day" && url.date ? formatListDate(url.date, locale) : t("undated")}
-                  {total !== null && (
+                  {total !== null && total > 0 && (
                     <span className="ml-2 text-sm font-normal text-text-muted">
                       {t("list.headingCount", { count: total })}
                     </span>

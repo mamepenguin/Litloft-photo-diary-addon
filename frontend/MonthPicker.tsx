@@ -64,7 +64,7 @@ export function MonthPicker({ months, current, onChoose }: Props) {
                   }`}
                 >
                   <span>{formatMonth(month, locale)}</span>
-                  <span className="text-xs">{count}</span>
+                  {count > 0 && <span className="text-xs">{count}</span>}
                 </button>
               </li>
             ))}
