@@ -1808,3 +1808,215 @@ describe("SPEC-PD-006 SPEC-PD-007: messages in en", () => {
     expect(within(document.body).queryByText(/\b(404|409|410|500)\b/)).toBeNull();
   });
 });
+
+// ---------------------------------------------------------------- readings decided by the user
+
+const isPolicy = (r: Req) => /^\/api\/drives\/[^/]+\/addon-policies$/.test(r.path);
+
+describe("a stream 404 or 410 on a re-read over drawn text", () => {
+  it.each([404, 410])("%i keeps the text and Edit, with the load error and a retry above them", async (status) => {
+    active("2026-10-03", "本文メモ", "n1");
+    await open(OCT3);
+    const text = await screen.findByText("本文メモ");
+    failWith(isStream("n1"), status);
+    await refresh();
+    const retry = await button("再試行");
+    expect(screen.getByText("本文メモ")).toBe(text);
+    expect(editLink()?.getAttribute("href")).toBe("/files/n1?edit=1");
+    expect(retry.compareDocumentPosition(text) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(noteReads("2026-10-03")).toBe(3);
+    await sleep(100);
+    expect(noteReads("2026-10-03")).toBe(3);
+    expect(streamReads("n1")).toBe(2);
+  });
+});
+
+describe("a first read of the stream failing", () => {
+  it.each([500, 403])("with %i still offers Edit, because the state is known to be active", async (status) => {
+    active("2026-10-03", "本文メモ", "n1");
+    failWith(isStream("n1"), status);
+    await open(OCT3);
+    await button("再試行");
+    expect(screen.queryByText("本文メモ")).toBeNull();
+    expect(editLink()?.getAttribute("href")).toBe("/files/n1?edit=1");
+  });
+
+  it("with a network failure still offers Edit", async () => {
+    active("2026-10-03", "本文メモ", "n1");
+    failNetwork(isStream("n1"));
+    await open(OCT3);
+    await button("再試行");
+    expect(editLink()).not.toBeNull();
+  });
+
+  it.each([404, 410])("with %i, the row still active, offers no Edit", async (status) => {
+    active("2026-10-03", "本文メモ", "n1");
+    failWith(isStream("n1"), status);
+    await open(OCT3);
+    await button("再試行");
+    await sleep(50);
+    expect(editLink()).toBeNull();
+  });
+
+  it("offers no Edit while the text is still loading, and does once it has arrived", async () => {
+    active("2026-10-03", "本文メモ", "n1");
+    const release = hold(isStream("n1"));
+    await open(OCT3);
+    await waitFor(() => expect(streamReads("n1")).toBe(1));
+    await sleep(50);
+    expect(editLink()).toBeNull();
+    expect(writeControl()).toBeNull();
+    await release();
+    await screen.findByText("本文メモ");
+    expect(editLink()).not.toBeNull();
+  });
+});
+
+describe("while the editor's availability is being read", () => {
+  it("Write a note is hidden until the policy has answered, then shown", async () => {
+    const release = hold(isPolicy);
+    await open(OCT4);
+    await waitFor(() => expect(noteReads("2026-10-04")).toBe(1));
+    await flush();
+    await sleep(50);
+    expect(writeControl()).toBeNull();
+    await release();
+    await findWrite();
+  });
+
+  it("Edit is hidden until the policy has answered, then shown", async () => {
+    active("2026-10-03", "本文メモ", "n1");
+    const release = hold(isPolicy);
+    await open(OCT3);
+    await screen.findByText("本文メモ");
+    await sleep(50);
+    expect(editLink()).toBeNull();
+    await release();
+    await waitFor(() => expect(editLink()).not.toBeNull());
+  });
+
+  it("both are hidden while the list of addons is loading", async () => {
+    active("2026-10-03", "本文メモ", "n1");
+    h.withKnowledge.loading = true;
+    try {
+      const page = await open(OCT3);
+      await screen.findByText("本文メモ");
+      await sleep(50);
+      expect(editLink()).toBeNull();
+      h.withKnowledge.loading = false;
+      page.again();
+      await waitFor(() => expect(editLink()).not.toBeNull());
+    } finally {
+      h.withKnowledge.loading = false;
+    }
+  });
+
+  it.each([
+    ["500", () => failWith(isPolicy, 500)],
+    ["a network failure", () => failNetwork(isPolicy)],
+  ])("when the read fails (%s) they are shown, as on the file page", async (_name, arrange) => {
+    arrange();
+    active("2026-10-03", "本文メモ", "n1");
+    await open(OCT3);
+    await screen.findByText("本文メモ");
+    await waitFor(() => expect(editLink()).not.toBeNull());
+    await click(await button("10月4日"));
+    await findWrite();
+  });
+
+  it("a later refetch of the policy does not hide what is shown", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    await open(OCT4);
+    await findWrite();
+    vi.setSystemTime(Date.now() + 60_000);
+    const release = hold(isPolicy);
+    await click(await button("10月3日 5枚"));
+    await waitFor(() => expect(requests.filter(isPolicy).length).toBeGreaterThan(1));
+    expect(writeControl()).not.toBeNull();
+    await release();
+    expect(writeControl()).not.toBeNull();
+  });
+});
+
+describe("the saved scroll position when the first read of the stream fails", () => {
+  it.each([500, 404])("is applied once it has failed with %i", async (status) => {
+    active("2026-10-20", "本文メモ", "n1");
+    saveState("family", { list: { loaded: 80, scrollY: 640 } });
+    failWith(isStream("n1"), status);
+    await open("?month=2026-10&date=2026-10-20");
+    await button("再試行");
+    await waitFor(() => expect(renderedIds()).toHaveLength(80));
+    await waitFor(() => expect(h.scroll.calls).toContain(640));
+  });
+});
+
+describe("the second read 3 seconds later runs on any entry to the page with a day open", () => {
+  it("on a page opened straight on a day, not only from the editor", async () => {
+    active("2026-10-03", "古い本文", "n1");
+    await open(OCT3);
+    await screen.findByText("古い本文");
+    active("2026-10-03", "新しい本文", "n1");
+    await sleep(2000);
+    expect(noteReads("2026-10-03")).toBe(1);
+    await sleep(1300);
+    expect(noteReads("2026-10-03")).toBe(2);
+    expect(await screen.findByText("新しい本文")).toBeInTheDocument();
+    await sleep(3300);
+    expect(noteReads("2026-10-03")).toBe(2);
+  });
+
+  it("changes nothing on screen when its result is the same, on a day with photos", async () => {
+    active("2026-10-03", "保存済み", "n1");
+    await open(OCT3);
+    const text = await screen.findByText("保存済み");
+    await sleep(3300);
+    expect(noteReads("2026-10-03")).toBe(2);
+    expect(screen.getByText("保存済み")).toBe(text);
+  });
+
+  it("not when the page was entered with no day open and a day is pressed later", async () => {
+    await open("?month=2026-10");
+    await click(await button("10月4日"));
+    await findWrite();
+    await sleep(3300);
+    expect(noteReads("2026-10-04")).toBe(1);
+  });
+
+  it("on the calendar entered from the map with a day open", async () => {
+    active("2026-10-03", "本文メモ", "n1");
+    await open("?view=map&date=2026-10-03");
+    await waitFor(() => expect(mapModule.createPhotoMap).toHaveBeenCalled());
+    await click(tab("カレンダー"));
+    await screen.findByText("本文メモ");
+    expect(noteReads("2026-10-03")).toBe(1);
+    await sleep(3300);
+    expect(noteReads("2026-10-03")).toBe(2);
+  });
+});
+
+describe("month and day data while loading and re-fetching", () => {
+  it("a re-fetch of the days and months keeps the grid with its marks and buttons", async () => {
+    active("2026-10-04", "四日のメモ");
+    await open("?month=2026-10");
+    await button("10月4日、メモあり");
+    await click(await button("10月3日 5枚"));
+    const releaseDays = hold((r) => r.path === `${BASE}/calendar/days`);
+    const releaseMonths = hold((r) => r.path === `${BASE}/calendar/months`);
+    await refresh();
+    await flush();
+    expect(await button("10月4日、メモあり")).toBeEnabled();
+    expect(screen.getByRole("button", { name: "10月5日" })).toBeEnabled();
+    await releaseDays();
+    await releaseMonths();
+    expect(await button("10月4日、メモあり")).toBeEnabled();
+  });
+
+  it("the note of a day with no photos is read while the photo list is still loading", async () => {
+    active("2026-10-04", "四日のメモ");
+    const release = hold((r) => r.path === `${BASE}/photos`);
+    await open(OCT4);
+    expect(await screen.findByText("四日のメモ")).toBeInTheDocument();
+    await release();
+    expect(await screen.findByText("この日の写真はありません")).toBeInTheDocument();
+  });
+});
