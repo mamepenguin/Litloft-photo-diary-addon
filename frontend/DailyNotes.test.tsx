@@ -1190,7 +1190,10 @@ describe("SPEC-PD-006 failure cases: the stream", () => {
     missing("2026-10-03", "n1");
     await click(await button("再試行"));
     expect(await screen.findByText(MISSING)).toBeInTheDocument();
-    expect(await button("10月3日 5枚")).toBeInTheDocument();
+    // Inside the 3 s second read, which would hide a calendar that is not read again.
+    await waitFor(() => expect(screen.getByRole("button", { name: "10月3日 5枚" })).toBeInTheDocument(), {
+      timeout: 1500,
+    });
     expect(screen.queryByRole("button", { name: /10月3日、5枚、メモあり/ })).toBeNull();
   });
 
