@@ -29,3 +29,13 @@ The artifact is private to its owner. What it fixes, on top of the earlier spec'
 
 Decided by the author: the second read 3 seconds later runs whenever the page is entered with a day open,
 not only from the editor. The page does not know where the viewer came from.
+
+## Size measurement, 2026-11-01
+
+measurement:
+at: 98df048
+by: agent
+machine: Apple M3 Max, Docker Desktop for the backend
+data: 50,000 generated `files` and `file_exif` rows in a test database (1 in 50 trashed, 1 in 20 without a capture date, photos spread over 120 months of capture dates) and 5,000 further rows under `Photo Diary/` and `Other/`: 4,000 notes at distinct dates over about 11 years (1 in 10 zero bytes, 1 in 25 trashed), 1,000 same-named decoys in `Other/`. The month list has 132 months.
+backend: pytest in the `Dockerfile.test` image, five requests after a warm-up, median in ms (the worst of the five was within 2 ms of it): `/calendar/months` 68, `/calendar/days?month=` 31, `/note` of a date with a row 1, `/note` of a date with no row 1. Each is inside 1 second.
+not measured: a drive on a network share, a browser.
