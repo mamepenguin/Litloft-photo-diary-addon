@@ -45,14 +45,14 @@ interface GeoJSONSourceLike {
   getClusterLeaves(clusterId: number, limit: number, offset: number): Promise<Feature[]>;
 }
 
-interface TileSourceLike {
-  setTiles(tiles: string[]): void;
-}
 
 interface MapLike {
   getSource(id: "points"): GeoJSONSourceLike | undefined;
-  getSource(id: "tiles"): TileSourceLike | undefined;
   addControl(control: unknown, position?: string): void;
+  addSource(id: string, source: unknown): void;
+  removeSource(id: string): void;
+  addLayer(layer: unknown, before?: string): void;
+  removeLayer(id: string): void;
   on(type: string, listener: (event: never) => void): void;
   once(type: string, listener: () => void): void;
   project(lngLat: LngLat): { x: number; y: number };
@@ -201,6 +201,15 @@ function boundsOf(points: Point[]): [LngLat, LngLat] {
 
 const currentTheme = (): Theme => (document.documentElement.dataset.theme === "dark" ? "dark" : "light");
 
+function tileSource(options: PhotoMapOptions) {
+  return {
+    type: "vector",
+    tiles: [options.tileUrl],
+    maxzoom: TILE_MAX_ZOOM,
+    attribution: options.attribution,
+  };
+}
+
 function buildStyle(options: PhotoMapOptions, data: unknown) {
   // The circle layers draw nothing: a source with no layer loads no tiles, so
   // they keep the points coming while the pins are drawn as elements.
@@ -209,12 +218,7 @@ function buildStyle(options: PhotoMapOptions, data: unknown) {
     version: 8,
     glyphs: glyphUrl(window.location.origin, ASSET_BASE),
     sources: {
-      [TILE_SOURCE]: {
-        type: "vector",
-        tiles: [options.tileUrl],
-        maxzoom: TILE_MAX_ZOOM,
-        attribution: options.attribution,
-      },
+      [TILE_SOURCE]: tileSource(options),
       points: {
         type: "geojson",
         data,
@@ -410,7 +414,7 @@ export async function createPhotoMap(
     element.style.cssText =
       `position:absolute;left:${-side / 2}px;top:${-side / 2}px;width:${side}px;height:${side}px;` +
       "box-sizing:border-box;padding:0;margin:0;border:2.5px solid #fff;border-radius:12px;" +
-      "background:var(--sand);cursor:pointer;pointer-events:auto;will-change:transform;" +
+      "background:var(--sand);cursor:pointer;pointer-events:auto;" +
       "box-shadow:0 1px 3px rgba(33,25,34,0.25)";
     const image = document.createElement("img");
     image.alt = "";
@@ -500,7 +504,16 @@ export async function createPhotoMap(
   // An errored tile is not asked for again while it stays in view, so an idle
   // that brought no new error does not show the tiles recovered. While the
   // notice is up, the first such idle asks for the tiles in view once more,
-  // and the idle after that one decides.
+  // and the idle after that one decides. The source is made again for that:
+  // `setTiles` reloads the tiles that loaded and skips the errored ones.
+  const reloadTiles = () => {
+    const layers = baseLayers(appliedTheme);
+    for (const base of layers) map.removeLayer(base.id);
+    map.removeSource(TILE_SOURCE);
+    map.addSource(TILE_SOURCE, tileSource(options));
+    for (const base of layers) map.addLayer(base, "clusters");
+  };
+
   const onIdle = () => {
     dataPending = false;
     syncPins();
@@ -514,7 +527,7 @@ export async function createPhotoMap(
         reportTiles(false);
       } else {
         verifyingTiles = true;
-        map.getSource("tiles")?.setTiles([options.tileUrl]);
+        reloadTiles();
       }
     }
   };

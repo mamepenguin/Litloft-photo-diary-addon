@@ -235,3 +235,23 @@ export async function accentPixels(
   }, png.toString("base64"));
 }
 
+
+/** Computed colour of a CSS colour or variable, as the browser resolves it. */
+export const resolveColour = (page: Page, value: string) =>
+  page.evaluate((v) => {
+    const probe = document.createElement("div");
+    probe.style.color = v;
+    document.body.appendChild(probe);
+    const colour = getComputedStyle(probe).color;
+    probe.remove();
+    return colour;
+  }, value);
+
+/** How many pins inside `root` have the accent colour for a border. */
+export async function accentBorders(page: Page, root = "#map"): Promise<number> {
+  const accent = await resolveColour(page, "var(--accent)");
+  return page.locator(`${root} button:has(img)`).evaluateAll(
+    (pins, colour) => pins.filter((pin) => getComputedStyle(pin).borderTopColor === colour).length,
+    accent,
+  );
+}

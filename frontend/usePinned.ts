@@ -66,7 +66,8 @@ export function useReachedHeader(enabled: boolean) {
     window.addEventListener("scroll", measure, { passive: true });
     window.addEventListener("resize", measure);
     const observer = new ResizeObserver(measure);
-    observer.observe(document.documentElement);
+    // What lies above the marker decides where it sits, and its size changes without a scroll.
+    if (node.previousElementSibling) observer.observe(node.previousElementSibling);
     return () => {
       window.removeEventListener("scroll", measure);
       window.removeEventListener("resize", measure);
