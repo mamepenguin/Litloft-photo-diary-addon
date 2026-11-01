@@ -50,7 +50,7 @@ The default server is a volunteer service with a usage policy that requires attr
 
 ## Limits
 
-- **HEIC photos are undated and off the map.** The core's EXIF extraction returns nothing for HEIC images, so they have no capture date or position to show. Until the core fixes that, they appear only under "No capture date". Nothing changes in this addon when it is fixed: the scanner reads EXIF again for files that have no record.
+- HEIC photos need a core at `370bb4a` or later to have a capture date and place. Photos already in the library fill in on the next scan.
 - The calendar and the map are built per request, with no cache. They are sized for up to 50,000 photos on a drive.
 - The date shown is the one the camera's clock wrote, with no time zone conversion.
 - A drive is a security boundary, so photos from different drives are never merged.
