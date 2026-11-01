@@ -38,6 +38,7 @@ const blank = (scope: Scope): Model => ({
 
 const modelOf = (ref: { current: Model }, s: Scope): Model => (ref.current.scope === s ? ref.current : blank(s));
 
+const LEFT: Scope = { date: null };
 const GONE = new Set([404, 410]);
 const editorHref = (fileId: string | null) => `/files/${fileId}?edit=1`;
 
@@ -50,6 +51,11 @@ type Props = {
   /** Changes whenever the page asks for everything to be read again. */
   token: number;
   refresh: () => void;
+  /**
+   * Whether the calendar's grid marks the open day as having a note, or null
+   * while it holds no answer for that day.
+   */
+  marked: boolean | null;
   /** A read found a state other than the one drawn, so what the calendar marks may be stale. */
   onStateChanged: () => void;
   onNotAvailable: () => void;
@@ -62,7 +68,16 @@ type Props = {
  * scope it began in and changes nothing once the viewer has left it, which is
  * also what keeps a day's old data from reappearing when the viewer returns.
  */
-export function useDayNote({ drive, date, active, token, refresh, onStateChanged, onNotAvailable }: Props): DayNote {
+export function useDayNote({
+  drive,
+  date,
+  active,
+  token,
+  refresh,
+  marked,
+  onStateChanged,
+  onNotAvailable,
+}: Props): DayNote {
   const router = useRouter();
   const id = date === null ? null : `${drive}\n${date}`;
   const visit = useRef({ id, scope: { date } as Scope });
@@ -73,6 +88,20 @@ export function useDayNote({ drive, date, active, token, refresh, onStateChanged
   const model = useRef(shown);
   const live = useRef(scope);
   live.current = scope;
+  // The render above cannot tell a scope that is still on screen from one
+  // that was unmounted, so leaving is decided here.
+  useEffect(() => {
+    live.current = scope;
+    return () => {
+      live.current = LEFT;
+    };
+  }, [scope]);
+
+  const drawn = useRef(marked);
+  drawn.current = marked;
+  // A first read that finds the grid disagreeing is acted on once per scope,
+  // so a disagreement the core keeps cannot read the calendar in a loop.
+  const reconciled = useRef<Scope | null>(null);
 
   const commit = useCallback((s: Scope, patch: Partial<Model>) => {
     if (live.current !== s) return;
@@ -121,7 +150,14 @@ export function useDayNote({ drive, date, active, token, refresh, onStateChanged
       const before = modelOf(model, s);
       const changed =
         before.info === null || before.info.state !== info.state || before.info.file_id !== info.file_id;
-      if (before.info !== null && before.info.state !== info.state) onStateChanged();
+      const moved = before.info !== null && before.info.state !== info.state;
+      const disagrees =
+        before.info === null &&
+        drawn.current !== null &&
+        drawn.current !== (info.state === "active") &&
+        reconciled.current !== s;
+      if (disagrees) reconciled.current = s;
+      if (moved || disagrees) onStateChanged();
       commit(s, {
         info,
         ...(changed ? { text: null, message: null, failure: null } : {}),
@@ -155,7 +191,10 @@ export function useDayNote({ drive, date, active, token, refresh, onStateChanged
         if (mayRecheck && "status" in result && GONE.has(result.status)) {
           mayRecheck = false;
           const again = await readNote(s);
-          if (again === null) return;
+          if (again === null) {
+            commit(s, { settled: true });
+            return;
+          }
           if (again.state !== "active" || again.file_id !== info.file_id) {
             info = again;
             continue;
@@ -165,7 +204,7 @@ export function useDayNote({ drive, date, active, token, refresh, onStateChanged
         return;
       }
     },
-    [follow, loadText, readNote, showText],
+    [follow, loadText, readNote, showText, commit],
   );
 
   const read = useCallback(

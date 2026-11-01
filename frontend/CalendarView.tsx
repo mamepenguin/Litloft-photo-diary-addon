@@ -60,8 +60,13 @@ export function CalendarView({
   const [days, setDays] = useState<Days | null>(null);
   const [daysFailedFor, setDaysFailedFor] = useState<string | null>(null);
   const [failures, setFailures] = useState<ReadonlySet<string>>(new Set());
+  // `token` re-reads the notes, months and days; `listToken` also re-reads the photo list.
   const [token, setToken] = useState(0);
-  const refresh = useCallback(() => setToken((value) => value + 1), []);
+  const [listToken, setListToken] = useState(0);
+  const refresh = useCallback(() => {
+    setToken((value) => value + 1);
+    setListToken((value) => value + 1);
+  }, []);
   const [calendarToken, setCalendarToken] = useState(0);
   const refreshCalendar = useCallback(() => setCalendarToken((value) => value + 1), []);
 
@@ -166,6 +171,21 @@ export function CalendarView({
   const daysForMonth = nothingDated ? NO_DAYS : days && days.month === month ? days.byDate : null;
   const openDate = listKind === "day" ? url.date : null;
 
+  const marked =
+    openDate !== null && month !== null && daysForMonth !== null && openDate.startsWith(month)
+      ? (daysForMonth.get(openDate)?.hasNote ?? false)
+      : null;
+
+  // The saved position belongs to the list the page was opened on.
+  const urlListKey = url.date ? `day:${url.date}` : url.undated ? "undated" : null;
+  const restoreFor = useRef(restore === null ? null : urlListKey);
+  const restoreHere = restore !== null && restoreFor.current === urlListKey ? restore : undefined;
+  useEffect(() => {
+    if (restoreFor.current === null || restoreFor.current === urlListKey) return;
+    restoreFor.current = null;
+    onRestored();
+  }, [urlListKey, onRestored]);
+
   const editorAvailable = useEditorAvailable(drive);
   const note = useDayNote({
     drive,
@@ -173,6 +193,7 @@ export function CalendarView({
     active,
     token,
     refresh,
+    marked,
     onStateChanged: refreshCalendar,
     onNotAvailable,
   });
@@ -182,10 +203,10 @@ export function CalendarView({
     if (!active || !secondReadDue) return;
     const timer = setTimeout(() => {
       setSecondReadDue(false);
-      refresh();
+      setToken((value) => value + 1);
     }, SECOND_READ_MS);
     return () => clearTimeout(timer);
-  }, [active, secondReadDue, refresh]);
+  }, [active, secondReadDue]);
 
   const goToday = () => {
     const today = localToday();
@@ -291,10 +312,10 @@ export function CalendarView({
               key={listKey}
               listKey={listKey}
               fetchIds={fetchIds}
-              refreshToken={token}
+              refreshToken={listToken}
               active={active}
               scroller="window"
-              restore={restore ?? undefined}
+              restore={restoreHere}
               note={
                 listKind === "day" ? (
                   <NoteArea drive={drive} note={note} editorAvailable={editorAvailable} />

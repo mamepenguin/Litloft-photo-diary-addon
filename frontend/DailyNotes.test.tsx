@@ -2058,3 +2058,261 @@ describe("month and day data while loading and re-fetching", () => {
     expect(await button("10月4日、メモあり")).toBeEnabled();
   });
 });
+
+// ---------------------------------------------------------------- scope and lifecycle
+
+const isPhotos = (r: Req) => r.path === `${BASE}/photos`;
+const isMonths = (r: Req) => r.path === `${BASE}/calendar/months`;
+const isDays = (r: Req) => r.path === `${BASE}/calendar/days`;
+const reads = (match: (r: Req) => boolean) => requests.filter(match).length;
+const limitsOf = (date: string) =>
+  requests.filter((r) => isPhotos(r) && r.query.get("date") === date).map((r) => r.query.get("limit"));
+
+describe("SPEC-PD-006 I10: a write or a restore answered after the viewer has gone", () => {
+  it("a creation answered after the drive changed does not navigate", async () => {
+    const release = hold(isCreate);
+    const page = await open(OCT4);
+    await findWrite();
+    await click(writeControl()!);
+    await waitFor(() => expect(creates()).toHaveLength(1));
+    h.drive.current = "work";
+    window.history.replaceState(null, "", "/drive/work/addons/photo_diary");
+    page.again();
+    await screen.findByText("撮影日のある写真はありません");
+    const before = here();
+    await release();
+    await flush();
+    expect(here()).toBe(before);
+  });
+
+  it("a creation answered after the page was left does not navigate", async () => {
+    const release = hold(isCreate);
+    const view = await open(OCT4);
+    await findWrite();
+    await click(writeControl()!);
+    await waitFor(() => expect(creates()).toHaveLength(1));
+    view.unmount();
+    window.history.replaceState(null, "", "/drive/family");
+    const before = here();
+    await release();
+    await flush();
+    expect(here()).toBe(before);
+  });
+
+  it("a restore answered after the page was left sends nothing more", async () => {
+    trashed("2026-10-03", "本文", "n1");
+    const release = hold(isRestore("n1"));
+    const view = await open(OCT3);
+    await click(await button("元に戻す"));
+    await waitFor(() => expect(requests.filter(isRestore("n1"))).toHaveLength(1));
+    view.unmount();
+    const sent = requests.length;
+    await release();
+    await flush();
+    expect(requests).toHaveLength(sent);
+  });
+});
+
+describe("pressing another day", () => {
+  it("shows no text and no Edit of the previous day while the new day's note is pending", async () => {
+    active("2026-10-03", "三日の本文", "n3");
+    active("2026-10-05", "五日の本文", "n5");
+    await open(OCT3);
+    await screen.findByText("三日の本文");
+    const release = hold(isNote("2026-10-05"));
+    await click(await button("10月5日、メモあり"));
+    await waitFor(() => expect(noteReads("2026-10-05")).toBe(1));
+    await flush();
+    expect(screen.queryByText("三日の本文")).toBeNull();
+    expect(editLink()).toBeNull();
+    await release();
+    expect(await screen.findByText("五日の本文")).toBeInTheDocument();
+  });
+});
+
+describe("the stream answering out of order", () => {
+  it("an older response arriving after a newer one does not replace the newer text", async () => {
+    active("2026-10-03", "古い本文", "n1");
+    await open(OCT3);
+    await screen.findByText("古い本文");
+    const releaseOld = hold(isStream("n1"), () => new Response("古い本文", { status: 200 }));
+    await refresh();
+    await waitFor(() => expect(streamReads("n1")).toBe(2));
+    active("2026-10-03", "新しい本文", "n1");
+    await refresh();
+    expect(await screen.findByText("新しい本文")).toBeInTheDocument();
+    await releaseOld();
+    await flush();
+    expect(screen.getByText("新しい本文")).toBeInTheDocument();
+    expect(screen.queryByText("古い本文")).toBeNull();
+  });
+});
+
+describe("the panel heading on a day with no photos", () => {
+  it("shows the date and no count", async () => {
+    await open(OCT4);
+    await screen.findByText("この日の写真はありません");
+    const heading = screen.getByText(/2026年10月4日\(日\)/);
+    expect(heading.textContent).toBe("2026年10月4日(日)");
+  });
+});
+
+describe("the calendar view hidden behind the map", () => {
+  it("opening a day and moving to the map sends no further note or stream request", async () => {
+    active("2026-10-03", "本文メモ", "n1");
+    await open(OCT3);
+    await screen.findByText("本文メモ");
+    const notes = noteReads();
+    const streams = streamReads("n1");
+    await click(tab("地図"));
+    await waitFor(() => expect(mapModule.createPhotoMap).toHaveBeenCalled());
+    await flush();
+    expect(noteReads()).toBe(notes);
+    expect(streamReads("n1")).toBe(streams);
+  });
+});
+
+describe("moving to another drive with the page open", () => {
+  it("shows neither the old drive's months nor Write before the new drive's policy has answered", async () => {
+    drives["家族 写真"].photos = { "2026-09-01": ids("s1-", 2) };
+    const page = await open(OCT4);
+    await findWrite();
+    await button("10月20日 100枚");
+
+    editorPolicy = false;
+    const releasePolicy = hold((r) => /^\/api\/drives\/[^/]+\/addon-policies$/.test(r.path));
+    const releaseMonths = hold(isMonths);
+    h.drive.current = "家族 写真";
+    window.history.replaceState(null, "", `/drive/${h.drive.current}/addons/photo_diary${OCT4}`);
+    page.again();
+    await flush();
+    expect(screen.queryByRole("button", { name: /10月20日/ })).toBeNull();
+    expect(writeControl()).toBeNull();
+
+    await releaseMonths();
+    await releasePolicy();
+    await button("10月5日");
+    await flush();
+    expect(writeControl()).toBeNull();
+  });
+});
+
+// ---------------------------------------------------------------- the second read and the grid
+
+describe("the second read", () => {
+  it("reads notes, months and days, and leaves a first load of the saved depth alone", async () => {
+    saveState("family", { list: { loaded: 80, scrollY: 640 } });
+    const release = hold((r) => isPhotos(r) && r.query.get("limit") === "80");
+    await open("?month=2026-10&date=2026-10-20");
+    await waitFor(() => expect(limitsOf("2026-10-20")).toEqual(["80"]));
+    await sleep(3300);
+    expect(reads(isMonths)).toBe(2);
+    expect(reads(isDays)).toBe(2);
+    expect(noteReads("2026-10-20")).toBe(2);
+    expect(limitsOf("2026-10-20")).toEqual(["80"]);
+    await release();
+    await waitFor(() => expect(renderedIds()).toHaveLength(80));
+    await flush();
+    expect(renderedIds()).toHaveLength(80);
+  });
+});
+
+describe("SPEC-PD-006 I3: a first read that finds a state the grid does not show", () => {
+  it("trashed behind the grid: the mark goes with the first read", async () => {
+    active("2026-10-03", "本文メモ", "n1");
+    const release = hold(isNote("2026-10-03"));
+    await open(OCT3);
+    await button("10月3日、5枚、メモあり");
+    trashed("2026-10-03", "本文メモ", "n1");
+    await release();
+    expect(await screen.findByText(TRASHED)).toBeInTheDocument();
+    expect(await button("10月3日 5枚")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /メモあり/ })).toBeNull();
+  });
+
+  it("written behind the grid: the mark comes with the first read", async () => {
+    const release = hold(isNote("2026-10-03"));
+    await open(OCT3);
+    await button("10月3日 5枚");
+    active("2026-10-03", "本文メモ", "n1");
+    await release();
+    expect(await screen.findByText("本文メモ")).toBeInTheDocument();
+    expect(await button("10月3日、5枚、メモあり")).toBeInTheDocument();
+  });
+
+  it("a first read that agrees with the grid reads neither months nor days again", async () => {
+    active("2026-10-03", "本文メモ", "n1");
+    await open(OCT3);
+    await screen.findByText("本文メモ");
+    await sleep(300);
+    expect(reads(isMonths)).toBe(1);
+    expect(reads(isDays)).toBe(1);
+  });
+
+  it("a disagreement that persists is acted on once", async () => {
+    active("2026-10-03", "本文メモ", "n1");
+    answer(
+      isDays,
+      () => json({ days: dayRows(drives.family, "2026-10").map((d) => ({ ...d, has_note: false })) }),
+      false,
+    );
+    const release = hold(isNote("2026-10-03"));
+    await open(OCT3);
+    await button("10月3日 5枚");
+    await release();
+    await screen.findByText("本文メモ");
+    await sleep(600);
+    expect(reads(isDays)).toBe(2);
+  });
+});
+
+describe("a day pressed while the saved position waits for the note", () => {
+  const RESTORE = "?month=2026-10&date=2026-10-20";
+
+  async function pressAnotherDayWhileWaiting() {
+    active("2026-10-20", "本文メモ", "n1");
+    saveState("family", { list: { loaded: 80, scrollY: 640 } });
+    const release = hold(isStream("n1"));
+    await open(RESTORE);
+    await waitFor(() => expect(renderedIds()).toHaveLength(80));
+    await click(await button("10月3日 5枚"));
+    await waitFor(() => expect(renderedIds()).toEqual(ids("d3-", 5)));
+    await release();
+    await flush();
+  }
+
+  it("does not inherit the position or the depth", async () => {
+    await pressAnotherDayWhileWaiting();
+    expect(h.scroll.calls).not.toContain(640);
+    expect(limitsOf("2026-10-03")).toEqual(["40"]);
+  });
+
+  it("does not bring them back when the viewer returns to the first day", async () => {
+    await pressAnotherDayWhileWaiting();
+    await act(async () => {
+      window.history.back();
+      await new Promise((r) => setTimeout(r, 30));
+    });
+    await waitFor(() => expect(limitsOf("2026-10-20")).toEqual(["80", "40"]));
+    await waitFor(() => expect(renderedIds()).toHaveLength(40));
+    expect(h.scroll.calls).not.toContain(640);
+  });
+});
+
+describe("the saved position when the stream answers 404 and /note then fails", () => {
+  it("is applied, because the first read of the stream has failed", async () => {
+    active("2026-10-20", "本文メモ", "n1");
+    saveState("family", { list: { loaded: 80, scrollY: 640 } });
+    failWith(isStream("n1"), 404, false);
+    let asked = 0;
+    answer(
+      isNote("2026-10-20"),
+      (r) => (++asked === 2 ? json({ detail: "x" }, 500) : route(r, h.drive.current)),
+      false,
+    );
+    await open("?month=2026-10&date=2026-10-20");
+    await waitFor(() => expect(renderedIds()).toHaveLength(80));
+    await waitFor(() => expect(h.scroll.calls).toContain(640));
+    expect(loadError().length).toBeGreaterThan(0);
+  });
+});
