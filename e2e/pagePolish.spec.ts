@@ -94,7 +94,11 @@ test.describe("SPEC-PD-012: the map's stage", () => {
     await page.setViewportSize({ width: 1280, height: 800 });
     const h = await open(page, "?view=map");
     await settle(page, h);
-    const bottom = async () => Math.round((await stage(page).boundingBox())!.y + (await stage(page).boundingBox())!.height);
+    // The stage is drawn a commit later than the canvas when the router commits in a transition.
+    const bottom = async () => {
+      const box = await stage(page).boundingBox();
+      return box === null ? -1 : Math.round(box.y + box.height);
+    };
     await expect.poll(bottom).toBe(800);
     await page.setViewportSize({ width: 1280, height: 1000 });
     await expect.poll(bottom).toBe(1000);

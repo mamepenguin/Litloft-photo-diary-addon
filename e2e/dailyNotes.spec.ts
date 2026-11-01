@@ -112,6 +112,8 @@ test("I10: entering the calendar over a drawn note does not move the photos belo
   await page.getByRole("tab", { name: "Calendar" }).click();
   await expect.poll(() => counts.note).toBeGreaterThan(reads);
   await expect(page.getByText(NOTE_TEXT)).toBeVisible();
+  // The wide layout is measured a frame or more after the view comes back; the note is what is under test.
+  await expect.poll(async () => (await tile.boundingBox())!.x).toBeGreaterThan(400);
   expect((await tile.boundingBox())!.y).toBe(before);
   await page.waitForTimeout(2000);
   await expect(page.getByText(NOTE_TEXT)).toBeVisible();
