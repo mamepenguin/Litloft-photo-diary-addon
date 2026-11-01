@@ -611,6 +611,52 @@ test.describe("SPEC-PD-009: the one-week strip on a narrow layout", () => {
     await expectReachable(page, "Close");
   });
 
+  test("I6 (revised): a press in the strip keeps the strip, the scroll position and the focus while the new list loads", async ({ page }) => {
+    await open(page, `?month=2026-09&date=${BIG_DAY}`);
+    await expect(page.getByTestId("tile").first()).toBeVisible();
+    await addAppHeader(page);
+    await scrollPastGrid(page);
+    await expect(strip(page)).toBeVisible();
+    const row = strip(page).locator("xpath=../following-sibling::div");
+    await page.route("**/api/addons/photo_diary/photos*", async (route) => {
+      if (new URL(route.request().url()).searchParams.get("limit") !== "1") await new Promise((r) => setTimeout(r, 1200));
+      return route.fallback();
+    });
+    await page.evaluate(() => {
+      const w = window as unknown as { __frames: unknown[] };
+      w.__frames = [];
+      const tick = () => {
+        w.__frames.push({
+          strip: !!document.querySelector('button[aria-label="Show month"]'),
+          y: Math.round(window.scrollY),
+          focus: document.activeElement?.getAttribute("data-date") ?? document.activeElement?.tagName,
+        });
+        if (w.__frames.length < 400) requestAnimationFrame(tick);
+      };
+      requestAnimationFrame(tick);
+    });
+    const before = await page.evaluate(() => Math.round(window.scrollY));
+    await row.locator('button[data-date="2026-09-08"]').click();
+    const pressed = await page.evaluate(() => (window as unknown as { __frames: unknown[] }).__frames.length);
+    await expect(page.getByRole("heading", { name: /Sep 8, 2026/ })).toBeVisible();
+    await expect(page.getByTestId("tile").first()).toBeVisible({ timeout: 5000 });
+    const frames = (await page.evaluate(() => (window as unknown as { __frames: any[] }).__frames)) as {
+      strip: boolean;
+      y: number;
+      focus: string;
+    }[];
+    const during = frames.slice(pressed + 1, pressed + 40);
+    expect(during.length).toBeGreaterThan(10);
+    for (const f of during) {
+      expect(f.strip).toBe(true);
+      expect(f.y).toBeGreaterThanOrEqual(before - 2);
+      expect(f.focus).toBe("2026-09-08");
+    }
+    // Settled: the heading is at the strip's bottom edge and the strip is there.
+    await expect(strip(page)).toBeVisible();
+    await expect.poll(async () => Math.round((await page.getByRole("heading", { name: /Sep 8, 2026/ }).locator("xpath=ancestor::div[contains(@class,'sticky')][1]/..").boundingBox())!.y)).toBe(56 + 81);
+  });
+
   test("the back control scrolls the month bar under the header and focuses the open day in the grid", async ({ page }) => {
     await open(page, `?month=2026-09&date=${BIG_DAY}`);
     await expect(page.getByTestId("tile").first()).toBeVisible();
