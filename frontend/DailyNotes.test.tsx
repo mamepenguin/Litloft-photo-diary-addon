@@ -2170,6 +2170,23 @@ describe("the calendar view hidden behind the map", () => {
     expect(noteReads()).toBe(notes);
     expect(streamReads("n1")).toBe(streams);
   });
+
+  it("a creation answered after moving to the map does not navigate, and the day is read on return", async () => {
+    const release = hold(isCreate);
+    await open(OCT4);
+    await findWrite();
+    await click(writeControl()!);
+    await waitFor(() => expect(creates()).toHaveLength(1));
+    await click(tab("地図"));
+    await waitFor(() => expect(mapModule.createPhotoMap).toHaveBeenCalled());
+    const before = here();
+    await release();
+    await flush();
+    expect(here()).toBe(before);
+    const reads = noteReads("2026-10-04");
+    await click(tab("カレンダー"));
+    await waitFor(() => expect(noteReads("2026-10-04")).toBe(reads + 1));
+  });
 });
 
 describe("moving to another drive with the page open", () => {

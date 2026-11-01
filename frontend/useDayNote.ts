@@ -88,6 +88,8 @@ export function useDayNote({
   const model = useRef(shown);
   const live = useRef(scope);
   live.current = scope;
+  const onScreen = useRef(active);
+  onScreen.current = active;
   // The render above cannot tell a scope that is still on screen from one
   // that was unmounted, so leaving is decided here.
   useEffect(() => {
@@ -269,7 +271,7 @@ export function useDayNote({
     if (info.state !== "none" || !begin(s)) return;
     try {
       const created = await createNote(drive, s.date);
-      if (live.current !== s) end(s, false);
+      if (live.current !== s || !onScreen.current) end(s, false);
       else router.push(editorHref(created.id));
     } catch (error) {
       const status = error instanceof ApiError ? error.status : 0;

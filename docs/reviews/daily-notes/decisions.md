@@ -111,3 +111,18 @@ evidence: Narrow run over frontend/MonthGrid.tsx, CalendarView.tsx, NoteArea.tsx
   Not run: Back in the Litloft app and anything on iOS; the changed paths were run in Chromium only. /note answering 404 while open, a locked drive, next from a month in no list, a save slower than 3 s.
   The run's own: while the stack was up a sqlite3 read from the host made the backend answer "disk I/O error" on data.db until it was restarted. quick_check was ok. Not the app's behaviour; those requests are not counted above.
 pending: iOS on a real device. Back by the app's swipe gesture in the iOS app, which idb could not produce in the simulator.
+
+## Findings triage, 2026-11-01
+
+Fixed: code-r1 A1 to A4; the surviving mutants u92, e07, u12, c28, u62, with tests; the test timeout that let the second read rescue broken paths (u09, u52, u59 now die); a stream 404 followed by a failed `/note` never settling; and from the second run, a creation answered after moving to the map navigating, and the rescan row's icon sitting alone on a phone.
+
+Left, each scored below the threshold, or out of this change:
+
+- code-r1 B1, B2: frequency 0, impact 1.
+- mutation-r1 u03, u26, u11, u31, u17, b08, c18: frequency 1, impact 5 or less. Test gaps; the code holds. p08 became equivalent with the A4 fix.
+- code-r2 1: going to the map right after Back consumes the saved position. Frequency 1, impact 3.
+- code-r2 5: a creation answered while a navigation is pending can still open the editor. Frequency 1, impact 3, unreproduced; it needs a real browser.
+- code-r2 2, 3, 4: test gaps with the code correct.
+- The second run's differences: an error row above a drawn note moves the photos by its height, which the user is told; `en` month bar wrapping to two lines, which the agreed rule of wrapping the bar as a whole allows; the grid's count having no unit, as it was before this change.
+
+For the human: `LoadError` is shared, so its restyle also changes how a failed map or undated list looks, against the letter of item 7 ("with no slot its output is unchanged"). Kept, because one look for one error is what the design asks for.

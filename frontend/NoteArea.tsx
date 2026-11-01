@@ -98,7 +98,7 @@ function MessageRow({ message, text }: { message: NoteMessage; text: string }) {
   return (
     <div className={`${ROW} ${color}`}>
       <Icon size={16} aria-hidden="true" className="shrink-0" />
-      <span>{text}</span>
+      <span className="min-w-0 flex-1">{text}</span>
     </div>
   );
 }
