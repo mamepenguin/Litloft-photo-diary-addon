@@ -103,12 +103,19 @@ test.describe("the view the map reports", () => {
 });
 
 test.describe("tiles", () => {
-  test("SPEC-PD-004: 256 px tiles are asked for one level above the map's zoom", async ({ page }) => {
+  test("SPEC-PD-010: vector tiles are asked for at the map's zoom, and never past zoom 14", async ({ page }) => {
     const h = await prepare(page);
     await page.goto(FIXTURE_PATH);
     await createMap(page, { points: same("a", 3, 35.6812, 139.7671), center: A, zoom: 12 });
     await settle(page, h);
-    const zooms = new Set(h.tileRequests().map((r) => Number(/\/v1\/(\d+)\//.exec(r.url)![1])));
-    expect(Math.max(...zooms)).toBe(13);
+    const zoomsOf = () => new Set(h.tileRequests().map((r) => Number(/\/v1\/(\d+)\//.exec(r.url)![1])));
+    expect(Math.max(...zoomsOf())).toBe(12);
+
+    await page.evaluate((center) => (window as any).__handle.destroy(), A);
+    await page.evaluate(() => document.getElementById("map")!.replaceChildren());
+    h.requests.length = 0;
+    await createMap(page, { points: same("a", 3, 35.6812, 139.7671), center: A, zoom: 18.7 });
+    await settle(page, h);
+    expect(Math.max(...zoomsOf())).toBe(14);
   });
 });

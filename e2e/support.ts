@@ -3,8 +3,8 @@ import fs from "node:fs";
 import path from "node:path";
 
 export const TILE_HOST = "tiles.example.test";
-export const TILE_URL = `https://${TILE_HOST}/v1/{z}/{x}/{y}.png`;
-export const TILE_PATTERN = new RegExp(`^https://${TILE_HOST.replace(/\./g, "\\.")}/v1/(\\d+)/(\\d+)/(\\d+)\\.png$`);
+export const TILE_URL = `https://${TILE_HOST}/v1/{z}/{x}/{y}.mvt`;
+export const TILE_PATTERN = new RegExp(`^https://${TILE_HOST.replace(/\./g, "\\.")}/v1/(\\d+)/(\\d+)/(\\d+)\\.mvt$`);
 export const FIXTURE_PATH = "/index.html?drive=family&date=2026-10-03&undated=true";
 
 const ASSETS = path.join(__dirname, "../backend/assets");
@@ -13,11 +13,64 @@ const PNG_1X1 = Buffer.from(
   "base64",
 );
 const TYPES: Record<string, string> = {
+  ".pbf": "application/x-protobuf",
   ".js": "text/javascript",
   ".mjs": "text/javascript",
   ".css": "text/css",
   ".map": "application/json",
 };
+
+// A vector tile written by hand: Mapbox Vector Tile 2.1 is protobuf, and the
+// few messages used here are small enough to encode without a library.
+const varint = (value: number): number[] => {
+  const out: number[] = [];
+  let rest = value;
+  while (rest > 0x7f) {
+    out.push((rest & 0x7f) | 0x80);
+    rest = Math.floor(rest / 128);
+  }
+  out.push(rest);
+  return out;
+};
+const field = (number: number, wire: number) => varint((number << 3) | wire);
+const bytes = (number: number, body: number[]) => [...field(number, 2), ...varint(body.length), ...body];
+const text = (number: number, value: string) => bytes(number, [...Buffer.from(value)]);
+const zigzag = (value: number) => (value << 1) ^ (value >> 31);
+
+const EXTENT = 4096;
+const rectangle = (x: number, y: number, w: number, h: number): number[] => [
+  9, zigzag(x), zigzag(y),
+  26, zigzag(w), zigzag(0), zigzag(0), zigzag(h), zigzag(-w), zigzag(0),
+  15,
+];
+
+function layer(name: string, kind: string | null, geometry: number[]): number[] {
+  const feature = [
+    ...(kind === null ? [] : bytes(2, [0, 0])),
+    ...field(3, 0), ...varint(3),
+    ...bytes(4, geometry),
+  ];
+  return bytes(3, [
+    ...text(1, name),
+    ...bytes(2, feature),
+    ...(kind === null ? [] : [...text(3, "kind"), ...bytes(4, text(1, kind))]),
+    ...field(5, 0), ...varint(EXTENT),
+    ...field(15, 0), ...varint(2),
+  ]);
+}
+
+/**
+ * The same tile for every address: the left half is a park, the top right
+ * corner is water, the rest is land. So the base shows the palette's three
+ * surfaces wherever the map looks.
+ */
+export const VECTOR_TILE = Buffer.from([
+  ...layer("land", "park", rectangle(0, 0, EXTENT / 2, EXTENT)),
+  ...layer("water_polygons", "water", rectangle(EXTENT / 2, 0, EXTENT / 2, EXTENT / 4)),
+]);
+export const MVT_TYPE = "application/vnd.mapbox-vector-tile";
+
+export const pinLabel = (count: number) => (count === 1 ? "1 photo" : `${count} photos`);
 
 export type Point = { file_id: string; lat: number; lon: number; taken_at: string | null };
 
@@ -25,6 +78,7 @@ export type Harness = {
   requests: { url: string; headers: Record<string, string> }[];
   tileRequests: () => { url: string; headers: Record<string, string> }[];
   assetRequests: () => string[];
+  thumbnailRequests: () => string[];
   clicks: string[][];
   views: { center: [number, number]; zoom: number }[];
   tileFailures: boolean[];
@@ -40,6 +94,7 @@ export async function prepare(page: Page): Promise<Harness> {
     requests: [],
     tileRequests: () => h.requests.filter((r) => new URL(r.url).hostname === TILE_HOST),
     assetRequests: () => h.requests.map((r) => r.url).filter((u) => u.includes("/api/addons/photo_diary/assets/")),
+    thumbnailRequests: () => h.requests.map((r) => r.url).filter((u) => /\/api\/files\/[^/]+\/thumbnail/.test(u)),
     clicks: [],
     views: [],
     tileFailures: [],
@@ -71,6 +126,9 @@ export async function prepare(page: Page): Promise<Harness> {
     });
   });
   await page.route(`https://${TILE_HOST}/**`, (route) =>
+    route.fulfill({ status: 200, contentType: MVT_TYPE, body: VECTOR_TILE }),
+  );
+  await page.route("**/api/files/*/thumbnail", (route) =>
     route.fulfill({ status: 200, contentType: "image/png", body: PNG_1X1 }),
   );
 
@@ -100,6 +158,7 @@ export async function createMap(
       center: o.center,
       zoom: o.zoom,
       selected: o.selected,
+      pinLabel: (count: number) => (count === 1 ? "1 photo" : `${count} photos`),
       onPointClick: (ids: string[]) => w.__onPointClick(ids),
       onPointError: () => {},
       onTileFailureChange: (value: boolean) => w.__onTileFailure(value),
@@ -128,9 +187,12 @@ export const same = (id: string, n: number, lat: number, lon: number): Point[] =
     taken_at: "2026-10-03T10:00:00",
   }));
 
-/** The text of each count label on the map, sorted. */
+/** The pins on the map: each is a button holding its thumbnail. */
+export const pinsOf = (page: Page) => page.locator("#map button:has(img)");
+
+/** The count badge of each pin that has one, sorted. */
 export const labelTexts = (page: Page) =>
-  page.locator("#map .maplibregl-marker").allTextContents().then((texts) => texts.sort());
+  pinsOf(page).allTextContents().then((texts) => texts.filter(Boolean).sort());
 
 export const PNG = PNG_1X1;
 

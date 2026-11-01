@@ -21,6 +21,7 @@ for (const failure of ["a network error", "a 503"]) test(`SPEC-PD-002: a map who
             points: o.points,
             tileUrl: o.tileUrl,
             attribution: "",
+            pinLabel: (count: number) => `${count} photos`,
             center: o.center,
             zoom: 12,
             onPointClick: () => {},
