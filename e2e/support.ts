@@ -34,6 +34,7 @@ const varint = (value: number): number[] => {
 };
 const field = (number: number, wire: number) => varint((number << 3) | wire);
 const bytes = (number: number, body: number[]) => [...field(number, 2), ...varint(body.length), ...body];
+const packed = (number: number, values: number[]) => bytes(number, values.flatMap(varint));
 const text = (number: number, value: string) => bytes(number, [...Buffer.from(value)]);
 const zigzag = (value: number) => (value << 1) ^ (value >> 31);
 
@@ -46,9 +47,9 @@ const rectangle = (x: number, y: number, w: number, h: number): number[] => [
 
 function layer(name: string, kind: string | null, geometry: number[]): number[] {
   const feature = [
-    ...(kind === null ? [] : bytes(2, [0, 0])),
+    ...(kind === null ? [] : packed(2, [0, 0])),
     ...field(3, 0), ...varint(3),
-    ...bytes(4, geometry),
+    ...packed(4, geometry),
   ];
   return bytes(3, [
     ...text(1, name),
@@ -69,7 +70,7 @@ function features(name: string, keys: string[], values: string[], list: { type: 
   return bytes(3, [
     ...text(1, name),
     ...list.flatMap(({ type, tags, geometry }) =>
-      bytes(2, [...bytes(2, tags), ...field(3, 0), ...varint(type), ...bytes(4, geometry)]),
+      bytes(2, [...packed(2, tags), ...field(3, 0), ...varint(type), ...packed(4, geometry)]),
     ),
     ...keys.flatMap((key) => text(3, key)),
     ...values.flatMap((value) => bytes(4, text(1, value))),
@@ -281,3 +282,43 @@ export async function accentBorders(page: Page, root = "#map"): Promise<number> 
     accent,
   );
 }
+
+/** How many pixels of `target`, as the screen shows them, are within `tolerance` of each `#rrggbb`. */
+export async function pixelsNear(
+  page: Page,
+  colours: string[],
+  tolerance = 4,
+  target: Locator = page.locator("#map"),
+): Promise<number[]> {
+  const png = await page.screenshot({ clip: (await target.boundingBox())! });
+  return page.evaluate(
+    async ([base64, list, tol]) => {
+      const bytes = Uint8Array.from(atob(base64 as string), (c) => c.charCodeAt(0));
+      const bitmap = await createImageBitmap(new Blob([bytes], { type: "image/png" }));
+      const canvas = document.createElement("canvas");
+      canvas.width = bitmap.width;
+      canvas.height = bitmap.height;
+      const context = canvas.getContext("2d")!;
+      context.drawImage(bitmap, 0, 0);
+      const { data } = context.getImageData(0, 0, canvas.width, canvas.height);
+      return (list as string[]).map((hex) => {
+        const [r, g, b] = [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16));
+        let count = 0;
+        for (let i = 0; i < data.length; i += 4) {
+          if (
+            Math.abs(data[i] - r) <= (tol as number) &&
+            Math.abs(data[i + 1] - g) <= (tol as number) &&
+            Math.abs(data[i + 2] - b) <= (tol as number)
+          ) {
+            count++;
+          }
+        }
+        return count;
+      });
+    },
+    [png.toString("base64"), colours, tolerance] as const,
+  );
+}
+
+export const LIGHT = { land: "#f6f6f3", woods: "#ecefe6", water: "#d5e2e8", road: "#dcdbd4", label: "#62625b" };
+export const DARK = { land: "#231216", woods: "#261a18", water: "#160b0e", road: "#5c3a3f", label: "#c4a0a4" };
