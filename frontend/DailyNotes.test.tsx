@@ -1647,7 +1647,7 @@ describe("SPEC-PD-007 I7: coming back from the editor by Back", () => {
       window.history.back();
       await new Promise((r) => setTimeout(r, 30));
     });
-    expect(window.location.search).toBe("?month=2026-10&date=2026-10-04");
+    await waitFor(() => expect(window.location.search).toBe("?month=2026-10&date=2026-10-04"));
     requests = [];
     mount();
     await flush();
