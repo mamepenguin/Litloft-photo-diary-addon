@@ -1595,12 +1595,13 @@ describe("SPEC-PD-006 I10: the saved scroll position waits for the note area", (
 // ---------------------------------------------------------------- coming back from the editor
 
 describe("SPEC-PD-007 I7: coming back from the editor by Back", () => {
-  async function pressWriteAndComeBack() {
+  async function pressWriteAndComeBack(whileInTheEditor?: () => void) {
     const view = await open("?month=2026-10&date=2026-10-04");
     await findWrite();
     await click(writeControl()!);
     await waitFor(() => expect(window.location.pathname).toMatch(/^\/files\//));
     view.unmount();
+    whileInTheEditor?.();
     await act(async () => {
       window.history.back();
       await new Promise((r) => setTimeout(r, 30));
@@ -1640,9 +1641,7 @@ describe("SPEC-PD-007 I7: coming back from the editor by Back", () => {
   });
 
   it("the second read changes nothing on screen when its result is the same", async () => {
-    await pressWriteAndComeBack();
-    active("2026-10-04", "保存済み", "new-2026-10-04");
-    await refresh();
+    await pressWriteAndComeBack(() => active("2026-10-04", "保存済み", "new-2026-10-04"));
     const text = await screen.findByText("保存済み");
     await sleep(3300);
     expect(screen.getByText("保存済み")).toBe(text);
