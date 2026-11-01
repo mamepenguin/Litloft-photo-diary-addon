@@ -8,7 +8,7 @@
  * MarkdownPreview stays real and records its props.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, configure, fireEvent, getConfig, render, screen, waitFor, within } from "@testing-library/react";
 import { NextIntlClientProvider } from "next-intl";
 import coreJa from "@/messages-core/ja.json";
 import coreEn from "@/messages-core/en.json";
@@ -345,8 +345,14 @@ class IdleResizeObserver {
 }
 
 const ORIGINAL_TZ = process.env.TZ;
+const ORIGINAL_WAIT = getConfig().asyncUtilTimeout;
+
+// Shorter than the second read, so a wait that is only satisfied by that read
+// fails instead of passing on it.
+const WAIT_MS = 1500;
 
 beforeEach(() => {
+  configure({ asyncUtilTimeout: WAIT_MS });
   drives = { family: library(), "家族 写真": library(), work: NOTHING_DATED() };
   requests = [];
   overrides = [];
@@ -398,6 +404,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  configure({ asyncUtilTimeout: ORIGINAL_WAIT });
   vi.useRealTimers();
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
