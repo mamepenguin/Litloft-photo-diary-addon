@@ -1,4 +1,4 @@
-"""Photo Diary: the current drive's photos by capture date and by place.
+"""Photo Diary: the current drive's photos by capture date and by place, and a note per date.
 
 Everything here reads the core's ``files`` and ``file_exif`` tables; the addon
 owns no table and writes nothing.
@@ -26,6 +26,7 @@ from .schemas import (
     DayCount,
     MapConfig,
     MonthCount,
+    NoteResponse,
     PhotoIdsResponse,
     Point,
     PointsResponse,
@@ -141,19 +142,48 @@ def _count(db: Session, query) -> int:
     return db.scalar(select(func.count()).select_from(query.subquery())) or 0
 
 
+# GLOB is case-sensitive and LIKE is not, so `2026-11-01.MD` and a differently
+# cased folder stay outside. The folder name is part of the data on disk.
+NOTE_FOLDER = "Photo Diary"
+_NOTE_PREFIX = f"{NOTE_FOLDER}/"
+_DATE_GLOB = "[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]"
+_NOTE_DATE = func.substr(File.file_path, len(_NOTE_PREFIX) + 1, 10)
+
+
+def _note_path(date: str) -> str:
+    return f"{_NOTE_PREFIX}{date}.md"
+
+
+def _note_dates(drive: str, glob_date: str = _DATE_GLOB):
+    """Dates of active notes: the name is a real date, and the file has text."""
+    return (
+        select(_NOTE_DATE)
+        .where(
+            File.drive == drive,
+            File.file_path.op("GLOB")(_note_path(glob_date)),
+            active_file_filter(),
+            File.file_size > 0,
+            func.date(_NOTE_DATE) == _NOTE_DATE,
+            _NOTE_DATE >= "0001-01-01",
+        )
+    )
+
+
 @router.get("/calendar/months", response_model=CalendarMonthsResponse)
 def calendar_months(drive: str = Depends(_drive_scope), db: Session = Depends(get_db)):
     month = func.substr(_DAY, 1, 7)
     rows = db.execute(
-        _photos(drive)
-        .with_only_columns(month, func.count())
-        .where(_IS_DATED)
-        .group_by(month)
-        .order_by(month.desc())
+        _photos(drive).with_only_columns(month, func.count()).where(_IS_DATED).group_by(month)
     ).all()
+    counts = {m: c for m, c in rows}
+    for note_month in db.scalars(
+        _note_dates(drive).with_only_columns(func.substr(_NOTE_DATE, 1, 7)).distinct()
+    ):
+        counts.setdefault(note_month, 0)
     undated = _count(db, _photos(drive).where(~_IS_DATED))
     return CalendarMonthsResponse(
-        months=[MonthCount(month=m, count=c) for m, c in rows], undated_count=undated
+        months=[MonthCount(month=m, count=counts[m]) for m in sorted(counts, reverse=True)],
+        undated_count=undated,
     )
 
 
@@ -168,9 +198,15 @@ def calendar_days(
         .with_only_columns(_DAY, func.count())
         .where(_IS_DATED, func.substr(_DAY, 1, 7) == month)
         .group_by(_DAY)
-        .order_by(_DAY)
     ).all()
-    return CalendarDaysResponse(days=[DayCount(date=d, count=c) for d, c in rows])
+    counts = {d: c for d, c in rows}
+    noted = set(db.scalars(_note_dates(drive, f"{month}-[0-9][0-9]")))
+    return CalendarDaysResponse(
+        days=[
+            DayCount(date=d, count=counts.get(d, 0), has_note=d in noted)
+            for d in sorted(counts.keys() | noted)
+        ]
+    )
 
 
 def _real_date(value: str) -> str:
@@ -181,6 +217,29 @@ def _real_date(value: str) -> str:
         except ValueError:
             pass
     raise HTTPException(status_code=422, detail="date must be a real YYYY-MM-DD")
+
+
+@router.get("/note", response_model=NoteResponse)
+def note(
+    date: str,
+    drive: str = Depends(_drive_scope),
+    db: Session = Depends(get_db),
+):
+    row = db.execute(
+        select(File.id, File.deleted_at, File.missing_since, File.file_size).where(
+            File.drive == drive, File.file_path == _note_path(_real_date(date))
+        )
+    ).first()
+    if row is None:
+        return NoteResponse(state="none", file_id=None)
+    file_id, deleted_at, missing_since, size = row
+    if deleted_at is not None:
+        state = "trashed"
+    elif missing_since is not None:
+        state = "missing"
+    else:
+        state = "active" if size > 0 else "empty"
+    return NoteResponse(state=state, file_id=file_id)
 
 
 @router.get("/photos", response_model=PhotoIdsResponse)

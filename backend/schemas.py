@@ -1,3 +1,5 @@
+from typing import Literal
+
 from pydantic import BaseModel
 
 
@@ -14,6 +16,7 @@ class CalendarMonthsResponse(BaseModel):
 class DayCount(BaseModel):
     date: str
     count: int
+    has_note: bool
 
 
 class CalendarDaysResponse(BaseModel):
@@ -39,3 +42,8 @@ class PointsResponse(BaseModel):
 class MapConfig(BaseModel):
     tile_url: str
     attribution: str
+
+
+class NoteResponse(BaseModel):
+    state: Literal["none", "empty", "active", "trashed", "missing"]
+    file_id: str | None
