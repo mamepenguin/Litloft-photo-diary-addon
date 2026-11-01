@@ -72,3 +72,26 @@ evidence: Narrow run over `CalendarView.tsx` and `map/createPhotoMap.ts`. Stack 
 
   Not run: strip in dark; Back inside the Litloft iOS app; a pinch; real GPU.
 pending: iOS on a real device, and the Litloft iOS app's own Back; whether the flicker of difference 1 is visible to a person at device speed.
+
+## R-5, third run
+
+decision:
+ran_in_app: yes
+at: 26e5f2692c788bf084fc60309728114f99e6e969
+by: agent
+evidence: Narrow run over `map/createPhotoMap.ts` and `MapView.tsx`. Stack rebuilt from the core worktree (core 6f6c0b27f, addon at the commit above, clean tree): backend, frontend, knowledge, intelligence; default tile server, real tiles. The served chunk holds `pause(){y=!0,x=!1},resume(){y=!0,x=!0,r.resize(),_(),I()}`. Fixture on drive テスト画像: the same 197 generated JPEGs as the earlier runs in `test_images/r5c-fx/pics`. Removed afterwards: files deleted, drive scanned, the 197 rows purged through `/api/files/batch/purge`, scanned again (drive total back to 1352; the earlier missing row `r5-text-lines/archive.zip` untouched), stack down. Chromium (Playwright, software GL). Screenshots are in /private/tmp/claude-502/-Users-libre-Sources-video-share/812503e2-427e-4330-9671-259b59381572/scratchpad/r5c/ (session scratchpad, not kept).
+
+  As specified:
+  - Returning to the map, 78 pins (`/points` and thumbnails stubbed with a dense grid, 1280x800, one zoom-in, 1200 ms hidden), 8 returns at each of CPU rates 1, 2, 4 and 6: removed 0, added 0, thumbnail requests 0, 78 before and after, in 32 of 32. The same probe before this fix gave 24, 24, 24 in most returns.
+  - Returning to the map, 49 pins (zoom 16 over Tokyo, the fixture, 1280x900, hidden 150, 600 or 1200 ms), 48 returns (rate 1: 30, rate 4: 9, rate 6: 9): removed 0, added 0, thumbnail requests 0, tile requests 0, one `/points` read per return, the same 49 pins; frame by frame, 49 of 49 pins have their image loaded in every frame after the map is shown. This closes difference 1 of the second run on this browser.
+  - Browser Back from Calendar to the map: removed 0, added 0, thumbnail requests 0, the same elements kept.
+  - Point removed by a refresh while switching (`/points` answered without the points under the centre pin): zoom 14 at once, 9 pins to 8; zoom 16 at once, 49 to 37; zoom 14 answered after 1 s, 9 to 8; answered while hidden again, 9 to 8. Each equals a fresh load at the same centre, zoom and points, by label and photo, and holds after a further switch.
+  - Pan right after return: drag begun 0, 100 and 400 ms after pressing Map, at rate 1 and rate 6, and with tile answers delayed 1.5 s: 40 pins, equal to a fresh load at the same place, none outside the view plus margin. Zoom-in pressed right after return: 49, equal to a fresh load.
+  - Fresh load with tile answers delayed 8 s: first pins at 0.94 s from `?view=map` and at 2.0 s from `?view=calendar` with Map pressed at 1.5 s, 49 pins, no tile answered yet; a switch while tiles were out kept 49, and 49 after they answered.
+  - States that could hold removal for good, each followed by a drag and compared with a fresh load, all equal: Calendar pressed 0, 50, 200, 500 and 900 ms after the first press of Map; hidden again before idle with tile answers held and released while hidden; 12 fast switches; tiles answering 500 and aborted (notice up, then gone after unblocking and a pan); `/points` empty at return removing the map and points coming back; window grown to 1920 and shrunk to 800 while hidden.
+
+  Differences from the spec or the design:
+  1. Difference 2 of the second run is unchanged: a refresh that changes the data rebuilds every pin, both sets in the document until idle (zoom 14: 18 at once; zoom 16: 93 at once).
+
+  Not run: iOS Safari in this run; a real GPU; a pinch.
+pending: iOS on a real device, and the Litloft iOS app's own Back.
