@@ -53,9 +53,10 @@ test.describe("SPEC-PD-012: the view switch", () => {
     await expect(page.getByRole("tablist")).toBeVisible();
     await page.setViewportSize({ width: 600, height: 800 });
     await expect.poll(async () => {
-      const t = (await page.getByRole("tablist").boundingBox())!;
-      const title = (await page.getByRole("heading", { level: 1 }).boundingBox())!;
-      return t.y >= title.y + title.height - 1;
+      // The tab list is made again in its new place, so it is absent for a moment.
+      const t = await page.getByRole("tablist").boundingBox();
+      const title = await page.getByRole("heading", { level: 1 }).boundingBox();
+      return t !== null && title !== null && t.y >= title.y + title.height - 1;
     }).toBe(true);
     await expect(page.getByRole("tab", { name: "Calendar" })).toHaveAttribute("aria-selected", "true");
   });
