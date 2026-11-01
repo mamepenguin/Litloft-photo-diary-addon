@@ -11,6 +11,7 @@ DATA_ROUTES = [
     "/photos?undated=true",
     "/points",
     "/map-config",
+    "/note?date=2026-10-03",
 ]
 
 
@@ -86,6 +87,16 @@ BAD_QUERIES = [
     pytest.param("/calendar/days?month=202610", id="month-no-dash"),
     pytest.param("/calendar/days?month=2026-10-01", id="month-is-a-date"),
     pytest.param("/calendar/days?month=abcd-ef", id="month-garbage"),
+    pytest.param("/note?date=2026-02-30", id="note-feb-30"),
+    pytest.param("/note?date=2025-02-29", id="note-non-leap"),
+    pytest.param("/note?date=2026-13-01", id="note-month-13"),
+    pytest.param("/note?date=2026-00-10", id="note-month-0"),
+    pytest.param("/note?date=2026-10", id="note-is-a-month"),
+    pytest.param("/note?date=2026-1-3", id="note-short"),
+    pytest.param("/note?date=20261003", id="note-no-dashes"),
+    pytest.param("/note?date=2026-10-03T00:00:00", id="note-with-time"),
+    pytest.param("/note?date=garbage", id="note-garbage"),
+    pytest.param("/note?date=", id="note-empty"),
     pytest.param("/photos?date=2026-02-30", id="date-feb-30"),
     pytest.param("/photos?date=2025-02-29", id="date-non-leap"),
     pytest.param("/photos?date=2026-13-01", id="date-month-13"),

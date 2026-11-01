@@ -149,6 +149,7 @@ vi.mock("./api", () => {
     fetchPhotos: vi.fn(),
     fetchPoints: vi.fn(),
     fetchMapConfig: vi.fn(),
+    fetchNote: vi.fn(),
   };
 });
 
@@ -227,6 +228,7 @@ function setDefaults() {
   });
   vi.mocked(api.fetchPoints).mockImplementation(async (drive: string) => ({ points: data[drive].points }));
   vi.mocked(api.fetchMapConfig).mockImplementation(async () => MAP_CONFIG);
+  vi.mocked(api.fetchNote).mockImplementation(async () => ({ state: "none", file_id: null }));
   vi.mocked(coreApi.batchGetFiles).mockImplementation((async (want: string[]) =>
     want.filter((id) => !h.missing.has(id)).map((id) => ({ id, filename: `${id}.jpg` }))) as any);
   vi.mocked(mapModule.createPhotoMap).mockImplementation((async (_el: HTMLElement, options: any) => {
@@ -295,6 +297,7 @@ beforeEach(() => {
   vi.mocked(api.fetchPhotos).mockReset();
   vi.mocked(api.fetchPoints).mockReset();
   vi.mocked(api.fetchMapConfig).mockReset();
+  vi.mocked(api.fetchNote).mockReset();
   vi.mocked(coreApi.batchGetFiles).mockReset();
   vi.mocked(mapModule.createPhotoMap).mockReset();
   setDefaults();
@@ -415,11 +418,11 @@ describe("SPEC-PD-001: calendar", () => {
     expect(tab("地図")).toHaveAttribute("aria-selected", "false");
   });
 
-  it("a day without photos is plain text, not a button", async () => {
+  it("SPEC-PD-006: a day without photos is a button named by its date alone", async () => {
     await settled();
     await day("10月3日 5枚");
     const cell = screen.getByText("4", { exact: true });
-    expect(cell.closest("button")).toBeNull();
+    expect(cell.closest("button")).toBe(await day("10月4日"));
   });
 
   it("previous and next skip to the nearest month with photos and are disabled at the ends", async () => {
@@ -697,10 +700,10 @@ describe("SPEC-PD-001: page URL", () => {
     expect(api.fetchPhotos).not.toHaveBeenCalledWith("family", expect.objectContaining({ undated: true }));
   });
 
-  it("a real month with no photos draws the grid with no buttons; previous and next find the nearest months", async () => {
+  it("SPEC-PD-006: a real month with no photos and no notes has every day a button; previous and next find the nearest months", async () => {
     await settled("?month=2026-09");
     await flush();
-    expect(screen.queryAllByRole("button", { name: /^\d+月\d+日/ })).toEqual([]);
+    expect(screen.getAllByRole("button", { name: /^9月\d+日$/ })).toHaveLength(30);
     expect(screen.getByRole("button", { name: "前の月" })).toBeEnabled();
     expect(screen.getByRole("button", { name: "次の月" })).toBeEnabled();
     await click(screen.getByRole("button", { name: "次の月" }));
@@ -722,12 +725,15 @@ describe("SPEC-PD-001: page URL", () => {
     await waitFor(() => expect(renderedIds()).toEqual(data.family.photos["2026-10-03"]));
   });
 
-  it("a month or date on a drive with no dated photos shows the message in place of the grid; undated still opens", async () => {
+  it("SPEC-PD-007: a month on a drive with nothing dated is an ordinary grid, previous and next disabled, no picker; undated still opens", async () => {
     data.family.months = [];
     await settled("?month=2026-10&undated=true");
-    expect(await screen.findByText("撮影日のある写真はありません")).toBeInTheDocument();
     await waitFor(() => expect(renderedIds()).toEqual(["u0", "u1", "u2"]));
-    expect(screen.queryByRole("button", { name: "前の月" })).toBeNull();
+    expect(await day("10月3日")).toBeInTheDocument();
+    expect(screen.queryByText("撮影日のある写真はありません")).toBeNull();
+    expect(screen.getByRole("button", { name: "前の月" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "次の月" })).toBeDisabled();
+    expect(screen.queryByRole("button", { name: "月を選ぶ" })).toBeNull();
   });
 });
 

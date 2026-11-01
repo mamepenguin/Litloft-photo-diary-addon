@@ -5,12 +5,14 @@ import coreJa from "@/messages-core/ja.json";
 import en from "../../../frontend/messages/en.json";
 import ja from "../../../frontend/messages/ja.json";
 import PhotoDiaryPage from "../../../frontend/PhotoDiaryPage";
-import { useSearchParams } from "./navigation";
+import { usePathname, useSearchParams } from "./navigation";
 
 // A file's own page replaces the diary, as the app's router does: the diary
 // unmounts and the document becomes short.
 function App() {
   const file = useSearchParams().get("file");
+  const editor = usePathname().startsWith("/files/");
+  if (editor) return <div id="editor-page" className="h-40 p-4">editor</div>;
   return file === null ? <PhotoDiaryPage /> : <div id="file-page" className="h-40 p-4">{file}</div>;
 }
 

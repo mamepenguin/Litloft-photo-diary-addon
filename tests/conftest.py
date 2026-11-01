@@ -46,6 +46,7 @@ class Library:
         missing=False,
         file_id=None,
         folder="",
+        size=1,
     ):
         self._n += 1
         filename = filename or f"img{self._n:04d}.jpg"
@@ -58,9 +59,9 @@ class Library:
             drive=drive,
             folder_path=folder,
             file_path=path,
-            file_size=1,
+            file_size=size,
             file_type=file_type,
-            mime_type="image/jpeg" if file_type == "image" else "video/mp4",
+            mime_type={"image": "image/jpeg", "document": "text/markdown"}.get(file_type, "video/mp4"),
             deleted_at=datetime.now(UTC) if deleted else None,
             missing_since=datetime.now(UTC) if missing else None,
         )
