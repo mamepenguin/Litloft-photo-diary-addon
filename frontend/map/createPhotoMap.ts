@@ -63,6 +63,7 @@ interface MapLike {
   getCanvas(): HTMLCanvasElement;
   getCanvasContainer(): HTMLElement;
   isStyleLoaded(): boolean;
+  resize(): void;
   remove(): void;
 }
 
@@ -593,6 +594,8 @@ export async function createPhotoMap(
       drawData();
     },
     resume() {
+      // A hidden map is sized 400 by 300; its own observer has not given it the real size yet.
+      map.resize();
       applyTheme();
       syncPins();
     },
