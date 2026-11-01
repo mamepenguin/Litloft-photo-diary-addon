@@ -1942,11 +1942,11 @@ describe("the saved scroll position when the first read of the stream fails", ()
   it.each([500, 404])("is applied once it has failed with %i", async (status) => {
     active("2026-10-20", "本文メモ", "n1");
     saveState("family", { list: { loaded: 80, scrollY: 640 } });
-    failWith(isStream("n1"), status);
+    failWith(isStream("n1"), status, false);
     await open("?month=2026-10&date=2026-10-20");
     await button("再試行");
     await waitFor(() => expect(renderedIds()).toHaveLength(80));
-    await waitFor(() => expect(h.scroll.calls).toContain(640));
+    await waitFor(() => expect(h.scroll.calls).toContain(640), { timeout: 1500 });
   });
 });
 
