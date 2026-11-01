@@ -232,7 +232,8 @@ function withLayout(rect: Partial<DOMRect> = {}) {
 const withoutLayout = () => layoutSpies.splice(0).forEach((spy) => spy.mockRestore());
 
 const tab = (name: string) => screen.getByRole("tab", { name });
-const strip = () => screen.queryByRole("button", { name: "月を表示" });
+// `hidden`: a strip inside the hidden view must be found too, which is what it must not be.
+const strip = () => screen.queryByRole("button", { name: "月を表示", hidden: true });
 
 // ---------------------------------------------------------------- the fade
 
@@ -442,6 +443,8 @@ describe("SPEC-PD-009: the strip, and what it waits for", () => {
     vi.mocked(api.fetchDays).mockReturnValue(slow.promise);
     await renderAt("?month=2026-10&date=2026-10-04");
     expect(strip()).toBeNull();
+    // Nor does the list's heading make room for it.
+    expect((screen.getByRole("heading", { name: /2026年10月4日/ }).closest("div[class*='sticky']") as HTMLElement).style.top).toBe("calc(var(--app-header-h, 0px) + 0px)");
     await act(async () => {
       slow.resolve({ days: Object.entries(COUNTS).map(([d, count]) => ({ date: dateOf(Number(d)), count })) });
     });
