@@ -59,14 +59,40 @@ function layer(name: string, kind: string | null, geometry: number[]): number[] 
   ]);
 }
 
+const point = (x: number, y: number): number[] => [9, zigzag(x), zigzag(y)];
+const line = (x1: number, y1: number, x2: number, y2: number): number[] => [
+  9, zigzag(x1), zigzag(y1), 10, zigzag(x2 - x1), zigzag(y2 - y1),
+];
+
+/** A layer of features that share its keys and values; each feature names the indices of its own. */
+function features(name: string, keys: string[], values: string[], list: { type: number; tags: number[]; geometry: number[] }[]): number[] {
+  return bytes(3, [
+    ...text(1, name),
+    ...list.flatMap(({ type, tags, geometry }) =>
+      bytes(2, [...bytes(2, tags), ...field(3, 0), ...varint(type), ...bytes(4, geometry)]),
+    ),
+    ...keys.flatMap((key) => text(3, key)),
+    ...values.flatMap((value) => bytes(4, text(1, value))),
+    ...field(5, 0), ...varint(EXTENT),
+    ...field(15, 0), ...varint(2),
+  ]);
+}
+
 /**
  * The same tile for every address: the left half is a park, the top right
- * corner is water, the rest is land. So the base shows the palette's three
- * surfaces wherever the map looks.
+ * corner is water, the rest is land. A street, a city name in Latin letters
+ * and one in Han characters sit on it, and a layer of buildings that the style
+ * does not draw. So the base shows the palette's surfaces wherever the map looks.
  */
 export const VECTOR_TILE = Buffer.from([
   ...layer("land", "park", rectangle(0, 0, EXTENT / 2, EXTENT)),
   ...layer("water_polygons", "water", rectangle(EXTENT / 2, 0, EXTENT / 2, EXTENT / 4)),
+  ...features("streets", ["kind"], ["primary"], [{ type: 2, tags: [0, 0], geometry: line(0, EXTENT / 2, EXTENT, EXTENT / 2) }]),
+  ...features("place_labels", ["kind", "name"], ["city", "Testville", "東京"], [
+    { type: 1, tags: [0, 0, 1, 1], geometry: point(EXTENT / 4, EXTENT / 4) },
+    { type: 1, tags: [0, 0, 1, 2], geometry: point(EXTENT / 2, (EXTENT * 3) / 4) },
+  ]),
+  ...layer("buildings", null, rectangle(EXTENT / 8, EXTENT / 8, 200, 200)),
 ]);
 export const MVT_TYPE = "application/vnd.mapbox-vector-tile";
 
