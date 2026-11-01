@@ -572,6 +572,45 @@ test.describe("SPEC-PD-009: the one-week strip on a narrow layout", () => {
     expect(await page.evaluate(() => window.history.length)).toBe(entries + 1);
   });
 
+  test("I6 (revised): the strip stays after a press in it, with the undated row present, and heading and close stay uncovered", async ({ page }) => {
+    await open(page, `?month=2026-09&date=${BIG_DAY}`);
+    await expect(page.getByTestId("tile").first()).toBeVisible();
+    await expect(page.getByRole("button", { name: /No capture date/ })).toBeVisible();
+    await addAppHeader(page);
+    await scrollPastGrid(page);
+    await expect(strip(page)).toBeVisible();
+    const row = strip(page).locator("xpath=../following-sibling::div");
+    await row.locator('button[data-date="2026-09-08"]').click();
+    await expect(page.getByRole("heading", { name: /Sep 8, 2026/ })).toBeVisible();
+    await expect(page.getByTestId("tile").first()).toBeVisible();
+    // Where the page settles, the strip is still there, and nothing flickers it away.
+    for (let i = 0; i < 6; i++) {
+      await page.waitForTimeout(120);
+      await expect(strip(page)).toBeVisible();
+    }
+    const stripBox = (await strip(page).locator("xpath=../..").boundingBox())!;
+    expect(Math.round(stripBox.y)).toBe(56);
+    const headingRow = page.getByRole("heading", { name: /Sep 8, 2026/ }).locator("xpath=ancestor::div[contains(@class,'sticky')][1]");
+    expect(Math.round((await headingRow.boundingBox())!.y)).toBeGreaterThanOrEqual(56 + 81);
+    await expectReachable(page, "Close");
+  });
+
+  test("I6 (revised): the strip engages when the heading reaches it, before the grid has left the header", async ({ page }) => {
+    await open(page, `?month=2026-09&date=${BIG_DAY}`);
+    await expect(page.getByTestId("tile").first()).toBeVisible();
+    await addAppHeader(page);
+    // Scroll until the list heading is 90 px under the header, 9 px past where the strip would end.
+    await page.evaluate(() => {
+      const h = [...document.querySelectorAll("h2")].find((e) => /Sep 10/.test(e.textContent ?? ""))!;
+      window.scrollBy(0, h.getBoundingClientRect().top - (56 + 90));
+    });
+    await page.waitForTimeout(200);
+    await expect(strip(page)).toHaveCount(0);
+    await page.evaluate(() => window.scrollBy(0, 30));
+    await expect(strip(page)).toBeVisible();
+    await expectReachable(page, "Close");
+  });
+
   test("the back control scrolls the month bar under the header and focuses the open day in the grid", async ({ page }) => {
     await open(page, `?month=2026-09&date=${BIG_DAY}`);
     await expect(page.getByTestId("tile").first()).toBeVisible();
