@@ -7,6 +7,11 @@ import ja from "../../../frontend/messages/ja.json";
 import PhotoDiaryPage from "../../../frontend/PhotoDiaryPage";
 import { usePathname, useSearchParams } from "./navigation";
 
+// gray-matter, which the core's MarkdownPreview reads frontmatter with, calls
+// Buffer.from on a string; the app's bundler supplies Buffer, this one does not.
+const scope = globalThis as { Buffer?: { from: (text: string) => Uint8Array } };
+scope.Buffer ??= { from: (text) => new TextEncoder().encode(text) };
+
 // A file's own page replaces the diary, as the app's router does: the diary
 // unmounts and the document becomes short.
 function App() {
