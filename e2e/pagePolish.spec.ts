@@ -5,7 +5,7 @@
  */
 import { expect, test, type Page } from "@playwright/test";
 import { addAppHeader, expectReachable, openPointList, serveApi } from "./pageSupport";
-import { accentBorders, prepare, resolveColour, settle } from "./support";
+import { accentBorders, prepare, resolveColour, settle, TILE_URL } from "./support";
 
 const PAGE_PATH = "/page.html";
 const json = (body: unknown) => ({ status: 200, contentType: "application/json", body: JSON.stringify(body) });
@@ -212,13 +212,47 @@ test.describe("SPEC-PD-012: the close control", () => {
     });
   });
 
-  test("the panel's heading row on the map does not take the strip's offset", async ({ page }) => {
+  test("the panel's heading row on the map does not take the strip's offset, under an app header", async ({ page }) => {
     await page.setViewportSize({ width: 390, height: 800 });
     const h = await open(page, "?view=map");
+    await addAppHeader(page);
     await settle(page, h);
     await openPointList(page);
     const row = closeOf(page).locator("xpath=..");
     expect(await row.evaluate((el) => getComputedStyle(el).top)).toBe("0px");
+    const panel = page.locator("div.overflow-y-auto", { has: closeOf(page) });
+    expect(Math.round((await row.boundingBox())!.y - (await panel.boundingBox())!.y)).toBeLessThan(20);
+  });
+
+  test("the map's attribution and zoom buttons stay above the narrow sheet", async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 800 });
+    const h = await prepare(page);
+    await serveApi(page);
+    await page.route("**/api/addons/photo_diary/map-config", (route) =>
+      route.fulfill(json({ tile_url: TILE_URL, attribution: '<a href="https://www.openstreetmap.org/copyright">© OpenStreetMap contributors</a>' })),
+    );
+    await page.goto(`${PAGE_PATH}?view=map`);
+    await settle(page, h);
+    await openPointList(page);
+    const hits = await page.evaluate(() => {
+      const hit = (el: Element | null) => {
+        if (!el) return false;
+        const r = el.getBoundingClientRect();
+        const top = document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2);
+        return top === el || el.contains(top);
+      };
+      return {
+        zoom: hit(document.querySelector(".maplibregl-ctrl-zoom-in")),
+        attribution: hit(document.querySelector(".maplibregl-ctrl-attrib a")),
+      };
+    });
+    expect(hits.zoom).toBe(true);
+    expect(hits.attribution).toBe(true);
+    const zoom = (await page.locator(".maplibregl-ctrl-zoom-in").boundingBox())!;
+    const sheet = (await page.locator("div.overflow-y-auto", { has: closeOf(page) }).boundingBox())!;
+    expect(zoom.y + zoom.height).toBeLessThan(sheet.y);
+    const attribution = (await page.locator(".maplibregl-ctrl-attrib a").boundingBox())!;
+    expect(attribution.y + attribution.height).toBeLessThan(sheet.y);
   });
 });
 

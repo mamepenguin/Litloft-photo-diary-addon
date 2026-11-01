@@ -129,6 +129,15 @@ test.describe("SPEC-PD-008: a day's surface deepens with its photo count", () =>
     expect(await countColour(7)).toBe(colours.primary);
   });
 
+  test("SPEC-PD-008: a day of one photo shows its count of 1", async ({ page }) => {
+    await open(page, "?month=2026-09");
+    await expect(day(page, 1)).toBeVisible();
+    for (const d of [1, 30]) {
+      const parts = await day(page, d).evaluate((el) => [...el.children].map((c) => c.textContent));
+      expect(parts).toEqual([String(d), "1"]);
+    }
+  });
+
   test("SPEC-PD-008: a selected day at step 3 or 4 has an inner ring of the page colour, and the focus ring replaces it", async ({ page }) => {
     await open(page, `?month=2026-09&date=2026-09-05`);
     await expect(day(page, 5)).toHaveAttribute("aria-pressed", "true");
@@ -142,6 +151,17 @@ test.describe("SPEC-PD-008: a day's surface deepens with its photo count", () =>
       return colour;
     });
     const shadow = (d: number) => day(page, d).evaluate((el) => getComputedStyle(el).boxShadow);
+
+    const accent = await page.evaluate(() => {
+      const probe = document.createElement("span");
+      probe.style.color = "var(--accent)";
+      document.body.appendChild(probe);
+      const colour = getComputedStyle(probe).color;
+      probe.remove();
+      return colour;
+    });
+    expect(await day(page, 5).evaluate((el) => getComputedStyle(el).borderTopColor)).toBe(accent);
+    expect(await day(page, 6).evaluate((el) => getComputedStyle(el).borderTopColor)).not.toBe(accent);
 
     const ring = await shadow(5);
     expect(ring).toContain(page_colour);
@@ -356,6 +376,27 @@ test.describe("SPEC-PD-008: the hover preview", () => {
     await expect(img).toHaveCount(0);
   });
 
+  test("scrolling the page ends it where the column is held and the day stays under the pointer", async ({ page }) => {
+    await page.setViewportSize({ width: 1280, height: 1000 });
+    await open(page, `?month=2026-09&date=${BIG_DAY}`);
+    await page.route("**/api/addons/photo_diary/photos*", (route) => {
+      const q = new URL(route.request().url()).searchParams;
+      if (q.get("limit") !== "1") return route.fallback();
+      return route.fulfill(json({ file_ids: [`on${q.get("date")}`], total: 1 }));
+    });
+    await expect(page.getByTestId("tile").first()).toBeVisible();
+    await expect.poll(() => position(page)).toBe("sticky");
+    await page.waitForTimeout(1200);
+    await day(page, 28).hover();
+    const img = page.locator("img[src*='on2026-09-28/thumbnail']");
+    await expect(img).toBeVisible();
+    // The held column does not move, so the day is still under the pointer afterwards.
+    await page.evaluate(() => window.scrollBy(0, 300));
+    await expect(img).toHaveCount(0);
+    await page.waitForTimeout(500);
+    await expect(img).toHaveCount(0);
+  });
+
   test("an image that fails ends it, and the day photo is read again on the next visit", async ({ page }) => {
     await open(page, "?month=2026-09");
     let reads = 0;
@@ -462,6 +503,17 @@ test.describe("SPEC-PD-009: the calendar column on a wide layout", () => {
     await expectReachable(page, (await last.getAttribute("aria-label"))!);
   });
 
+  test("I5: a window made shorter while the calendar is on screen releases the held column", async ({ page }) => {
+    await page.setViewportSize({ width: 1280, height: 1000 });
+    await open(page, `?month=2026-09&date=${BIG_DAY}`);
+    await expect(page.getByTestId("tile").first()).toBeVisible();
+    await expect.poll(() => position(page)).toBe("sticky");
+    await page.setViewportSize({ width: 1280, height: 420 });
+    await expect.poll(() => position(page)).toBe("static");
+    await page.setViewportSize({ width: 1280, height: 1000 });
+    await expect.poll(() => position(page)).toBe("sticky");
+  });
+
   test("I5: a viewport that shrank while the calendar was hidden is measured when it comes back", async ({ page }) => {
     await page.setViewportSize({ width: 1280, height: 1000 });
     await open(page, `?month=2026-09&date=${BIG_DAY}`);
@@ -532,9 +584,45 @@ test.describe("SPEC-PD-009: the one-week strip on a narrow layout", () => {
     const buttons = row.getByRole("button");
     await expect(buttons).toHaveCount(4);
     await expect(row.locator('button[data-date="2026-09-28"]')).toContainText("4");
+    // Each cell shows its day of the month.
+    for (const d of [27, 28, 29, 30]) {
+      const cell = row.locator(`button[data-date="2026-09-${d}"]`);
+      if (d === 27) continue;
+      expect(await cell.evaluate((el) => el.children[0].textContent)).toBe(String(d));
+    }
     await expect(row.locator('button[data-date="2026-09-30"]')).toHaveAttribute("aria-pressed", "true");
     expect(await cells.nth(5).evaluate((el) => el.children.length)).toBe(0);
     expect(await cells.nth(6).evaluate((el) => el.children.length)).toBe(0);
+  });
+
+  test("the strip is opaque and above the photos that scroll under it", async ({ page }) => {
+    await open(page, `?month=2026-09&date=${BIG_DAY}`);
+    await expect(page.getByTestId("tile").first()).toBeVisible();
+    await addAppHeader(page);
+    await page.evaluate(() => window.scrollTo(0, 1500));
+    await expect(strip(page)).toBeVisible();
+    await page.waitForTimeout(300);
+    const surface = strip(page).locator("xpath=../..");
+    const bg = await surface.evaluate((el) => getComputedStyle(el).backgroundColor);
+    const page_colour = await page.evaluate(() => {
+      const probe = document.createElement("span");
+      probe.style.color = "var(--bg-primary)";
+      document.body.appendChild(probe);
+      const c = getComputedStyle(probe).color;
+      probe.remove();
+      return c;
+    });
+    expect(bg).toBe(page_colour);
+    // Every cell of the strip answers a press: no tile, which is positioned like the core's, covers it.
+    const cells = await surface.locator('button[data-date]').evaluateAll((all) =>
+      all.map((el) => {
+        const r = el.getBoundingClientRect();
+        const top = document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2);
+        return top === el || el.contains(top);
+      }),
+    );
+    expect(cells.length).toBeGreaterThan(3);
+    expect(cells.every(Boolean)).toBe(true);
   });
 
   test("I6: it never covers the list's heading or its close control", async ({ page }) => {
@@ -592,6 +680,8 @@ test.describe("SPEC-PD-009: the one-week strip on a narrow layout", () => {
     expect(Math.round(stripBox.y)).toBe(56);
     const headingRow = page.getByRole("heading", { name: /Sep 8, 2026/ }).locator("xpath=ancestor::div[contains(@class,'sticky')][1]");
     expect(Math.round((await headingRow.boundingBox())!.y)).toBeGreaterThanOrEqual(56 + 81);
+    // The list itself, not its sticky heading, lands at the strip's bottom edge.
+    await expect.poll(async () => Math.round((await headingRow.locator("xpath=..").boundingBox())!.y)).toBe(56 + 81);
     await expectReachable(page, "Close");
   });
 
@@ -604,7 +694,8 @@ test.describe("SPEC-PD-009: the one-week strip on a narrow layout", () => {
       const h = [...document.querySelectorAll("h2")].find((e) => /Sep 10/.test(e.textContent ?? ""))!;
       window.scrollBy(0, h.getBoundingClientRect().top - (56 + 90));
     });
-    await page.waitForTimeout(200);
+    // The strip follows the scroll a frame or more later: look again after it has had time to.
+    await page.waitForTimeout(1500);
     await expect(strip(page)).toHaveCount(0);
     await page.evaluate(() => window.scrollBy(0, 30));
     await expect(strip(page)).toBeVisible();

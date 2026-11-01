@@ -21,6 +21,7 @@ import {
   resolveColour,
   same,
   settle,
+  zoomInAtCentre,
   type Harness,
   type Point,
 } from "./support";
@@ -216,6 +217,32 @@ test.describe("SPEC-PD-011: a pin is a photo with a count badge", () => {
         expect(Math.abs(info.badge!.dy)).toBeLessThan(10);
       }
     }
+  });
+
+  test("pins follow the map when it is panned and zoomed", async ({ page }) => {
+    const h = await prepare(page);
+    // About 140 px either side of the centre at zoom 12.
+    const points = [...same("l", 2, 35.6812, 139.7671 - 0.0343), ...same("r", 3, 35.6812, 139.7671 + 0.0343)];
+    await dated(page, h, points, 12);
+    const centreOf = async (name: string) => {
+      const b = (await page.getByRole("button", { name, exact: true }).boundingBox())!;
+      return { x: b.x + b.width / 2, y: b.y + b.height / 2 };
+    };
+    const left = await centreOf("2 photos");
+    const right = await centreOf("3 photos");
+    const box = (await page.locator("#map").boundingBox())!;
+
+    await page.mouse.move(box.x + 640, box.y + 480);
+    await page.mouse.down();
+    await page.mouse.move(box.x + 640 + 100, box.y + 480, { steps: 6 });
+    await page.mouse.up();
+    await expect.poll(async () => Math.round((await centreOf("3 photos")).x - right.x)).toBeGreaterThan(90);
+    expect(Math.abs((await centreOf("3 photos")).x - right.x - 100)).toBeLessThan(6);
+    expect(Math.abs((await centreOf("2 photos")).x - left.x - 100)).toBeLessThan(6);
+
+    const gap = (await centreOf("3 photos")).x - (await centreOf("2 photos")).x;
+    await zoomInAtCentre(page);
+    await expect.poll(async () => Math.round((await centreOf("3 photos")).x - (await centreOf("2 photos")).x)).toBeGreaterThan(gap * 1.8);
   });
 
   test("I9: a pin's photo is the newest dated one, else the first undated one", async ({ page }) => {
