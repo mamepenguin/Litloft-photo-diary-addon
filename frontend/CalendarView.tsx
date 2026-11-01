@@ -18,7 +18,7 @@ import { useDayPreview } from "./useDayPreview";
 import { useEditorAvailable } from "./useEditorAvailable";
 import { appHeaderHeight, useHeldColumn, useReachedHeader } from "./usePinned";
 import { useWide } from "./useWide";
-import { STRIP_HEIGHT, WeekStrip } from "./WeekStrip";
+import { STRIP_HEIGHT, STRIP_REACH, WeekStrip } from "./WeekStrip";
 import { formatListDate, formatMonth, localToday } from "./lib/dates";
 import { photoTotal } from "./lib/total";
 import type { PageUrl } from "./lib/pageUrl";
@@ -200,7 +200,7 @@ export function CalendarView({
   const preview = useDayPreview({ drive, active, month, version: days });
 
   const stripEligible = active && !wide && openDate !== null && daysForMonth !== null;
-  const marker = useReachedHeader(stripEligible);
+  const marker = useReachedHeader(stripEligible, STRIP_REACH);
   const stripShown = stripEligible && marker.reached;
 
   const stripPick = (date: string) => {
@@ -356,7 +356,8 @@ export function CalendarView({
           </div>
 
           {stripEligible && !wide && (
-            <div ref={marker.ref} className="sticky top-[var(--app-header-h,0px)] z-20 h-0">
+            // 57 is STRIP_REACH, spelled out for the stylesheet generator.
+            <div ref={marker.ref} className="sticky top-[calc(var(--app-header-h,0px)+57px)] z-20 h-0">
               {stripShown && daysForMonth && openDate && month && (
                 <WeekStrip month={month} openDate={openDate} days={daysForMonth} onPick={stripPick} onBack={stripBack} />
               )}

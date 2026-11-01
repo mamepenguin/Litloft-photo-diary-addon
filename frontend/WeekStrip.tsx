@@ -9,6 +9,14 @@ import { formatMonth, weekOf } from "./lib/dates";
 /** The strip's height with its border, which the page heading's sticky offset adds. */
 export const STRIP_HEIGHT = 81;
 
+/**
+ * The strip engages when the list's heading is where the strip ends, which is
+ * the gap between the column and the list (24) short of the strip's height. The
+ * marker that decides it sits at the column's bottom, so it sticks this far
+ * under the header and the strip hangs this far above it.
+ */
+export const STRIP_REACH = STRIP_HEIGHT - 24;
+
 const NO_DAY: DayInfo = { count: 0, hasNote: false };
 
 type Props = {
@@ -25,7 +33,7 @@ export function WeekStrip({ month, openDate, days, onPick, onBack }: Props) {
   const locale = useLocale();
 
   return (
-    <div className="absolute inset-x-0 top-0 border-b border-bg-border bg-bg-primary">
+    <div className="absolute inset-x-0 top-[-57px] border-b border-bg-border bg-bg-primary">
       <div className="flex h-9 items-center justify-between">
         <span className="text-sm font-bold text-text-primary">{formatMonth(month, locale)}</span>
         <Button iconOnly variant="ghost" aria-label={t("strip.showMonth")} onClick={onBack}>

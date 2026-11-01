@@ -46,11 +46,11 @@ export function useHeldColumn(active: boolean) {
 }
 
 /**
- * Whether a zero-height sticky marker has reached the app header. A marker
- * that has not stuck yet sits below the header, and one that has sits exactly
- * on it, so its top alone says whether the content above it is out of sight.
+ * Whether a zero-height sticky marker has reached `offset` px under the app
+ * header. A marker that has not stuck yet sits below that line, and one that
+ * has sits exactly on it, so its top alone says whether it has been reached.
  */
-export function useReachedHeader(enabled: boolean) {
+export function useReachedHeader(enabled: boolean, offset: number) {
   const [node, setNode] = useState<HTMLElement | null>(null);
   const [reached, setReached] = useState(false);
 
@@ -61,7 +61,7 @@ export function useReachedHeader(enabled: boolean) {
     }
     // An element with no box has no position to compare, and reads as 0.
     const measure = () =>
-      setReached(node.getClientRects().length > 0 && node.getBoundingClientRect().top <= appHeaderHeight() + 0.5);
+      setReached(node.getClientRects().length > 0 && node.getBoundingClientRect().top <= appHeaderHeight() + offset + 0.5);
     measure();
     window.addEventListener("scroll", measure, { passive: true });
     window.addEventListener("resize", measure);
@@ -73,7 +73,7 @@ export function useReachedHeader(enabled: boolean) {
       window.removeEventListener("resize", measure);
       observer.disconnect();
     };
-  }, [enabled, node]);
+  }, [enabled, node, offset]);
 
   return { ref: setNode, reached: enabled && reached };
 }

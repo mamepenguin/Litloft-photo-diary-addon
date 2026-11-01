@@ -17,4 +17,4 @@
 - `.pbf` is served as `application/x-protobuf`.
 - Placement of 50,000 generated points (Chromium, software GL, zoom 12 over a 0.3 by 0.2 degree area): the first pin is in the document 1.52 to 1.56 seconds after the map is asked for, in three runs, against the 3 second limit. The map holds fewer than 400 pins in that view.
 - `setTiles` on the vector source reloads the tiles that loaded and leaves the errored ones as they are, so the tile notice's retry makes the source again.
-- Open point for the human: the strip appears when its marker, which sits under the calendar column, reaches the app header; the scroll after a strip press puts the list's heading at the strip's bottom edge. With the column's 24 px gap (and the undated row, when there is one) the marker is then still below the header, so the strip is not shown after that scroll. See the report of the implementation run.
+- The human revised I6 (see `invariants.md`): the narrow strip engages when the list's heading reaches the strip's position.
