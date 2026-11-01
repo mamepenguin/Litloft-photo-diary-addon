@@ -4,7 +4,7 @@ SPEC-ID: SPEC-PD-005
 SPEC-ID: SPEC-PD-006
 SPEC-ID: SPEC-PD-007
 
-Approval:
+Approval: sha256:09dd63ce090c17d03425cb7d34ec57c517a2c63135c1f2262d357cd1f30c30c9 Yuichi Senga 2026-11-01
 
 ## Summary
 
