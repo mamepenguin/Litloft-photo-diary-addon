@@ -364,10 +364,17 @@ test.describe("SPEC-PD-011: pins that are outside what a hidden map's tiles cove
       }).observe(document.querySelector(".maplibregl-map")!, { childList: true, subtree: true });
     });
 
-    await page.getByRole("tab", { name: "Calendar" }).click();
-    await page.waitForTimeout(800);
-    await page.getByRole("tab", { name: "Map" }).click();
-    await page.waitForTimeout(2500);
+    // A slow main thread, as a phone's: the map's own resize observer then runs
+    // before the page's effects do, which a fast one hides.
+    const cdp = await page.context().newCDPSession(page);
+    await cdp.send("Emulation.setCPUThrottlingRate", { rate: 6 });
+    for (let round = 0; round < 3; round++) {
+      await page.getByRole("tab", { name: "Calendar" }).click();
+      await page.waitForTimeout(800);
+      await page.getByRole("tab", { name: "Map" }).click();
+      await page.waitForTimeout(2500);
+    }
+    await cdp.send("Emulation.setCPUThrottlingRate", { rate: 1 });
     expect(await page.evaluate(() => (window as any).__removed)).toBe(0);
     expect(await pins.count()).toBe(before);
     expect(await pins.evaluateAll((all) => all.filter((el) => (el as any).__kept).length)).toBe(before);
