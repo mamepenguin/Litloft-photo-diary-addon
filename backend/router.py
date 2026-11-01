@@ -48,14 +48,19 @@ ADDON_META = {
 router = APIRouter(prefix="/api/addons/photo_diary", tags=["photo_diary"])
 
 _ASSETS_DIR = Path(__file__).resolve().parent / "assets"
-_ASSET_TYPES = {".js": "text/javascript", ".css": "text/css", ".txt": "text/plain"}
+_ASSET_TYPES = {
+    ".js": "text/javascript",
+    ".css": "text/css",
+    ".txt": "text/plain",
+    ".pbf": "application/x-protobuf",
+}
 _ASSETS = {
     p.name: p
     for p in _ASSETS_DIR.iterdir()
     if p.is_file() and p.suffix in _ASSET_TYPES
 }
 
-DEFAULT_TILE_URL = "https://tile.openstreetmap.org/{z}/{x}/{y}.png"
+DEFAULT_TILE_URL = "https://vector.openstreetmap.org/shortbread_v1/{z}/{x}/{y}.mvt"
 DEFAULT_ATTRIBUTION = (
     '<a href="https://www.openstreetmap.org/copyright">'
     "© OpenStreetMap contributors</a>"

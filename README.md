@@ -2,9 +2,9 @@
 
 An addon for [Litloft](https://github.com/mamepenguin/Litloft) that shows the photos of the current drive in two ways: on a month calendar and on a map.
 
-- **Calendar.** Days with photos show their count. Pressing a day lists its photos. Photos without a capture date are listed under "No capture date". Every day can be pressed, and a **Today** control goes to the current date.
+- **Calendar.** Days with photos show their count, on a deeper tint the more photos the day holds. Resting the pointer on a day previews one of its photos. On a narrow screen a one-week strip stays under the app header while a day's photos scroll. Pressing a day lists its photos. Photos without a capture date are listed under "No capture date". Every day can be pressed, and a **Today** control goes to the current date.
 - **Notes.** A day can have one short Markdown note, shown above its photos in the day's panel and marked in the calendar. See [Daily notes](#daily-notes).
-- **Map.** Photos with a GPS position are drawn as points that merge and split as you zoom. Clicking a point lists the photos it stands for, one section per capture date. A section heading links to that day in the calendar.
+- **Map.** Photos with a GPS position are drawn as thumbnails that merge and split as you zoom; a badge shows how many photos a thumbnail stands for. Pressing one lists the photos it stands for, one section per capture date. A section heading links to that day in the calendar.
 
 Photos are placed by the capture date and GPS position the core already stores for each image. The addon owns no table, and its backend writes nothing. Notes are created and restored by the page through the core's public API. It is drive-scoped: it reads one drive at a time, and only drives the viewer may open and whose addon policy allows it.
 
@@ -41,7 +41,9 @@ If the build fails, the running version is kept.
 
 ## Map tiles
 
-The browser requests map tiles directly from a tile server while a map is on screen. By default that is the OpenStreetMap server (`https://tile.openstreetmap.org/{z}/{x}/{y}.png`) with its attribution. A tile request carries only the zoom and tile numbers, so the server learns which area is being viewed and never receives a photo's coordinates, id or name. It also sees the client's IP address and user agent, and a `Referer` of at most the page's origin. The backend never contacts the tile server.
+The browser requests map tiles directly from a tile server while a map is on screen. By default that is the OpenStreetMap vector tile server (`https://vector.openstreetmap.org/shortbread_v1/{z}/{x}/{y}.mvt`) with its attribution. A tile request carries only the zoom and tile numbers, so the server learns which area is being viewed and never receives a photo's coordinates, id or name. It also sees the client's IP address and user agent, and a `Referer` of at most the page's origin. The backend never contacts the tile server.
+
+The map is drawn in the browser from those vector tiles with a quiet style held in the addon, in a light and a dark palette that follow the theme. Place names are drawn with Noto Sans glyphs that the addon serves itself (Unicode U+0000 to U+2FFF, from the [versatiles-fonts](https://github.com/versatiles-org/versatiles-fonts) release 3.0.0, under the SIL Open Font License, which is shipped beside them). Han, kana and Hangul names are drawn with the browser's own fonts. The only outside host the map contacts is the tile server.
 
 To use another server, set these under the backend's `environment` in `docker-compose.override.yml`, then restart the backend:
 
@@ -49,16 +51,16 @@ To use another server, set these under the backend's `environment` in `docker-co
 services:
   backend:
     environment:
-      PHOTO_DIARY_TILE_URL: "https://tiles.example.com/{z}/{x}/{y}.png"
+      PHOTO_DIARY_TILE_URL: "https://tiles.example.com/shortbread_v1/{z}/{x}/{y}.mvt"
       PHOTO_DIARY_TILE_ATTRIBUTION: '<a href="https://example.com/copyright">Example contributors</a>'
 ```
 
 - An unset or empty `PHOTO_DIARY_TILE_URL` means the default URL and the default attribution.
 - A set URL with no `PHOTO_DIARY_TILE_ATTRIBUTION` shows no attribution.
 - The attribution is an HTML fragment, drawn the way MapLibre draws attribution.
-- Tiles are expected to be raster, 256 pixels, up to zoom 19. A server that stops earlier shows a "Map tiles could not be loaded" notice when the viewer zooms past its limit.
+- The URL must name a vector tile server that uses the [Shortbread](https://shortbread-tiles.org/) schema and serves up to at least zoom 14; the map draws beyond that from the zoom 14 tiles. Raster tile URLs are no longer supported, and neither is a server with another schema or one that stops below zoom 14. None of these is detected: the map shows the land colour and the photos, or the "Map tiles could not be loaded" notice when tiles fail.
 
-The default server is a volunteer service with a usage policy that requires attribution and forbids heavy use.
+The default server is a volunteer service run by the OpenStreetMap Foundation, with best effort and no SLA. Its [vector tile policy](https://operations.osmfoundation.org/policies/vector/) requires attribution, a valid `Referer` and forbids bulk download.
 
 ## Limits
 

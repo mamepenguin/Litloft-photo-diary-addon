@@ -109,7 +109,12 @@ def test_pd004_every_bundled_file_is_served_immutable_without_a_drive(env):
 # A module script is refused unless it is served with a JavaScript type.
 @pytest.mark.parametrize(
     "suffix,media_type",
-    [(".js", "text/javascript"), (".css", "text/css"), (".txt", "text/plain")],
+    [
+        (".js", "text/javascript"),
+        (".css", "text/css"),
+        (".txt", "text/plain"),
+        (".pbf", "application/x-protobuf"),
+    ],
 )
 def test_pd004_each_bundled_file_is_served_with_its_type(env, suffix, media_type):
     client, *_ = env
