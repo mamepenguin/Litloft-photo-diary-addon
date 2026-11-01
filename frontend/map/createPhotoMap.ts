@@ -328,6 +328,9 @@ export async function createPhotoMap(
   // features read are the old ones or none, and a pin is neither added nor
   // removed on that evidence.
   let dataPending = true;
+  // After a view switch the tiles are those of the hidden map's small size until the
+  // map has gone idle at the real one, so a pin is not removed on what they hold.
+  let resuming = false;
   let tileFailed = false;
   let reportedFailing = false;
   let verifyingTiles = false;
@@ -462,7 +465,7 @@ export async function createPhotoMap(
       wanted.set(seen.key, seen);
     }
     for (const [key, pin] of pins) {
-      if (wanted.has(key)) continue;
+      if (wanted.has(key) || resuming) continue;
       removePin(pin);
       pins.delete(key);
     }
@@ -517,6 +520,7 @@ export async function createPhotoMap(
 
   const onIdle = () => {
     dataPending = false;
+    resuming = false;
     syncPins();
     if (tileFailed) {
       tileFailed = false;
@@ -595,6 +599,7 @@ export async function createPhotoMap(
     },
     resume() {
       // A hidden map is sized 400 by 300; its own observer has not given it the real size yet.
+      resuming = true;
       map.resize();
       applyTheme();
       syncPins();
