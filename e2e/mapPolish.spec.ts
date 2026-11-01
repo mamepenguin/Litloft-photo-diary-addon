@@ -531,6 +531,21 @@ test.describe("SPEC-PD-011: a pin is a photo with a count badge", () => {
     await expect.poll(askedFor, { timeout: 5000 }).toBeGreaterThan(1);
   });
 
+  test("a pin whose point left the data is removed after the map comes back on screen", async ({ page }) => {
+    const h = await prepare(page);
+    await dated(page, h, [...same("keep", 3, 35.6812, 139.7671), ...same("gone", 2, 35.6812, 139.7671 + 0.1)], 11);
+    await expect(pinsOf(page)).toHaveCount(2);
+    await page.evaluate(() => (document.getElementById("map")!.style.display = "none"));
+    await handle(page, "(map, points) => map.setPoints(points)", same("keep", 3, 35.6812, 139.7671));
+    await page.waitForTimeout(300);
+    await page.evaluate(() => {
+      document.getElementById("map")!.style.display = "";
+      (window as any).__handle.resume();
+    });
+    await expect(pinsOf(page)).toHaveCount(1, { timeout: 5000 });
+    await expect(page.getByRole("button", { name: "3 photos", exact: true })).toBeVisible();
+  });
+
   test("pins are not held back while the tiles have not answered", async ({ page }) => {
     const h = await prepare(page);
     let release!: () => void;

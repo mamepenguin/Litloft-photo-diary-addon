@@ -333,3 +333,44 @@ test.describe("SPEC-PD-011: pins across a view switch", () => {
     expect(h.thumbnailRequests().length).toBe(requests);
   });
 });
+
+test.describe("SPEC-PD-011: pins that are outside what a hidden map's tiles cover", () => {
+  test("none is re-created when the map comes back on screen, and no thumbnail is asked for again", async ({ page }) => {
+    await page.setViewportSize({ width: 1280, height: 800 });
+    const h = await prepare(page);
+    await serveApi(page);
+    // A grid wider than the 400 by 300 view a hidden map keeps tiles for.
+    const points = Array.from({ length: 2400 }, (_, i) => ({
+      file_id: `g${i}`,
+      lat: 35.5 + Math.floor(i / 60) * 0.015,
+      lon: 139.3 + (i % 60) * 0.013,
+      taken_at: "2026-09-10T10:00:00",
+    }));
+    await page.route("**/api/addons/photo_diary/points", (route) => route.fulfill(json({ points })));
+    await page.goto(`${PAGE_PATH}?view=map`);
+    await settle(page, h);
+    await page.getByRole("button", { name: "Zoom in" }).click();
+    await page.waitForTimeout(1500);
+    const pins = page.locator(".maplibregl-map button:has(img)");
+    await expect.poll(() => pins.count()).toBeGreaterThan(30);
+    await page.waitForFunction(() => [...document.querySelectorAll("button img")].every((i) => (i as HTMLImageElement).complete));
+    await pins.evaluateAll((all) => all.forEach((el) => ((el as any).__kept = true)));
+    const before = await pins.count();
+    const requests = h.thumbnailRequests().length;
+    await page.evaluate(() => {
+      (window as any).__removed = 0;
+      new MutationObserver((records) => {
+        for (const r of records) for (const n of r.removedNodes) if ((n as Element).matches?.("button")) (window as any).__removed++;
+      }).observe(document.querySelector(".maplibregl-map")!, { childList: true, subtree: true });
+    });
+
+    await page.getByRole("tab", { name: "Calendar" }).click();
+    await page.waitForTimeout(800);
+    await page.getByRole("tab", { name: "Map" }).click();
+    await page.waitForTimeout(2500);
+    expect(await page.evaluate(() => (window as any).__removed)).toBe(0);
+    expect(await pins.count()).toBe(before);
+    expect(await pins.evaluateAll((all) => all.filter((el) => (el as any).__kept).length)).toBe(before);
+    expect(h.thumbnailRequests().length).toBe(requests);
+  });
+});

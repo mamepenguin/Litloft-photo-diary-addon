@@ -749,6 +749,65 @@ test.describe("SPEC-PD-009: the one-week strip on a narrow layout", () => {
     await expect.poll(async () => Math.round((await page.getByRole("heading", { name: /Sep 8, 2026/ }).locator("xpath=ancestor::div[contains(@class,'sticky')][1]/..").boundingBox())!.y)).toBe(56 + 81);
   });
 
+  test("the page's height returns to the short list's once a pressed day has settled", async ({ page }) => {
+    await open(page, `?month=2026-09&date=${BIG_DAY}`);
+    await expect(page.getByTestId("tile").first()).toBeVisible();
+    await addAppHeader(page);
+    await scrollPastGrid(page);
+    await expect(strip(page)).toBeVisible();
+    const long = await page.evaluate(() => document.documentElement.scrollHeight);
+    await page.route("**/api/addons/photo_diary/photos*", (route) => {
+      const q = new URL(route.request().url()).searchParams;
+      if (q.get("date") !== "2026-09-08" || q.get("limit") === "1") return route.fallback();
+      return route.fulfill(json({ file_ids: ["x0", "x1"], total: 2 }));
+    });
+    const row = strip(page).locator("xpath=../following-sibling::div");
+    await row.locator('button[data-date="2026-09-08"]').click();
+    await expect(page.getByTestId("tile")).toHaveCount(2);
+    await expect.poll(() => page.evaluate(() => document.documentElement.scrollHeight)).toBeLessThan(long - 1500);
+  });
+
+  test("a press abandoned by closing the list gives the held height back", async ({ page }) => {
+    await open(page, `?month=2026-09&date=${BIG_DAY}`);
+    await expect(page.getByTestId("tile").first()).toBeVisible();
+    await addAppHeader(page);
+    await scrollPastGrid(page);
+    const long = await page.evaluate(() => document.documentElement.scrollHeight);
+    await page.route("**/api/addons/photo_diary/photos*", async (route) => {
+      if (new URL(route.request().url()).searchParams.get("limit") !== "1") await new Promise((r) => setTimeout(r, 2500));
+      return route.fallback();
+    });
+    const row = strip(page).locator("xpath=../following-sibling::div");
+    await row.locator('button[data-date="2026-09-08"]').click();
+    await expect(page.getByRole("heading", { name: /Sep 8, 2026/ })).toBeVisible();
+    await page.getByRole("button", { name: "Close", exact: true }).click();
+    await expect(page.getByRole("heading", { name: /Sep 8, 2026/ })).toHaveCount(0);
+    await expect.poll(() => page.evaluate(() => document.documentElement.scrollHeight)).toBeLessThan(long - 1500);
+  });
+
+  test("a press abandoned before its list settled does not scroll the page when that day is opened later", async ({ page }) => {
+    await open(page, `?month=2026-09&date=${BIG_DAY}`);
+    await expect(page.getByTestId("tile").first()).toBeVisible();
+    await addAppHeader(page);
+    await scrollPastGrid(page);
+    let slow = true;
+    await page.route("**/api/addons/photo_diary/photos*", async (route) => {
+      if (slow && new URL(route.request().url()).searchParams.get("limit") !== "1") await new Promise((r) => setTimeout(r, 1500));
+      return route.fallback();
+    });
+    const row = strip(page).locator("xpath=../following-sibling::div");
+    await row.locator('button[data-date="2026-09-08"]').click();
+    await expect(page.getByRole("heading", { name: /Sep 8, 2026/ })).toBeVisible();
+    await page.getByRole("button", { name: "Close", exact: true }).click();
+    await page.waitForTimeout(2000);
+    slow = false;
+    await page.evaluate(() => window.scrollTo(0, 0));
+    await day(page, 8).click();
+    await expect(page.getByTestId("tile").first()).toBeVisible();
+    await page.waitForTimeout(600);
+    expect(await page.evaluate(() => window.scrollY)).toBe(0);
+  });
+
   test("the back control scrolls the month bar under the header and focuses the open day in the grid", async ({ page }) => {
     await open(page, `?month=2026-09&date=${BIG_DAY}`);
     await expect(page.getByTestId("tile").first()).toBeVisible();
