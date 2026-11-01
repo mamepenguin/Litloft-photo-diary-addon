@@ -268,3 +268,34 @@ test.describe("SPEC-PD-010 I8: the theme with the page open", () => {
     expect(h.tileRequests().length).toBe(requests);
   });
 });
+
+test.describe("SPEC-PD-011: pins across a view switch", () => {
+  test("a pin and its image are kept, and not asked for again, when the map comes back on screen", async ({ page }) => {
+    await page.setViewportSize({ width: 1280, height: 800 });
+    const h = await prepare(page);
+    await serveApi(page);
+    // 0.05 degrees is 70 px or so at the zoom the points are fitted to: 25 separate pins.
+    const points = Array.from({ length: 25 }, (_, i) => ({
+      file_id: `s${i}`,
+      lat: 35.6 + Math.floor(i / 5) * 0.05,
+      lon: 139.6 + (i % 5) * 0.05,
+      taken_at: "2026-09-10T10:00:00",
+    }));
+    await page.route("**/api/addons/photo_diary/points", (route) => route.fulfill(json({ points })));
+    await page.goto(`${PAGE_PATH}?view=map`);
+    await settle(page, h);
+    const pins = page.locator("canvas").first().locator("xpath=ancestor::div[contains(@class,'maplibregl-map')]").locator("button:has(img)");
+    await expect.poll(() => pins.count()).toBeGreaterThanOrEqual(20);
+    await page.waitForFunction(() => [...document.querySelectorAll("button img")].every((i) => (i as HTMLImageElement).complete));
+    const count = await pins.count();
+    await pins.evaluateAll((all) => all.forEach((el, i) => ((el as any).__id = i)));
+    const requests = h.thumbnailRequests().length;
+
+    await page.getByRole("tab", { name: "Calendar" }).click();
+    await page.getByRole("tab", { name: "Map" }).click();
+    await page.waitForTimeout(800);
+    expect(await pins.count()).toBe(count);
+    expect(await pins.evaluateAll((all) => all.filter((el) => (el as any).__id !== undefined).length)).toBe(count);
+    expect(h.thumbnailRequests().length).toBe(requests);
+  });
+});
