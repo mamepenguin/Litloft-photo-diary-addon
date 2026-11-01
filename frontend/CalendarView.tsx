@@ -203,17 +203,32 @@ export function CalendarView({
   const marker = useReachedHeader(stripEligible, STRIP_REACH);
   const stripShown = stripEligible && marker.reached;
 
+  // While a day pressed in the strip loads, the old list is gone and the new one
+  // is short; the page keeps its height so the scroll position does not clamp and
+  // the strip stays where it is.
+  const content = useRef<HTMLDivElement | null>(null);
+  const releaseHeight = () => {
+    if (content.current) content.current.style.minHeight = "";
+  };
   const stripPick = (date: string) => {
     if (date === openDate) return;
     scrollOnSettle.current = date;
+    if (content.current) content.current.style.minHeight = `${content.current.offsetHeight}px`;
     go("push", { month, date });
   };
+  useEffect(() => {
+    if (scrollOnSettle.current !== null && scrollOnSettle.current !== url.date) {
+      scrollOnSettle.current = null;
+      releaseHeight();
+    }
+  }, [url.date]);
   // The list is the first thing in its element, so its top is its heading's.
   const listSettled = (list: HTMLElement) => {
     if (scrollOnSettle.current === null || scrollOnSettle.current !== url.date) return;
     scrollOnSettle.current = null;
     const top = window.scrollY + list.getBoundingClientRect().top - appHeaderHeight() - STRIP_HEIGHT;
     window.scrollTo({ top, behavior: "instant" });
+    releaseHeight();
   };
   const stripBack = () => {
     const bar = monthBar.current;
@@ -270,7 +285,7 @@ export function CalendarView({
       )}
 
       {months !== null && (
-        <div className="grid group-data-[wide=true]/diary:grid-cols-[minmax(0,26rem)_minmax(0,1fr)] group-data-[wide=true]/diary:items-start group-data-[wide=true]/diary:gap-6">
+        <div ref={content} className="grid content-start group-data-[wide=true]/diary:grid-cols-[minmax(0,26rem)_minmax(0,1fr)] group-data-[wide=true]/diary:items-start group-data-[wide=true]/diary:gap-6">
           <div
             ref={column.ref}
             className={`grid gap-3 [grid-template-areas:'bar'_'grid'_'undated'] group-data-[wide=true]/diary:grid-cols-[minmax(0,1fr)_auto] group-data-[wide=true]/diary:[grid-template-areas:'bar_undated'_'grid_grid'] ${
