@@ -178,13 +178,11 @@ export function CalendarView({
 
   // The saved position belongs to the list the page was opened on.
   const urlListKey = url.date ? `day:${url.date}` : url.undated ? "undated" : null;
-  const restoreFor = useRef(restore === null ? null : urlListKey);
-  const restoreHere = restore !== null && restoreFor.current === urlListKey ? restore : undefined;
+  const [restoreFor] = useState(restore === null ? null : urlListKey);
+  const restoreHere = restore !== null && restoreFor === urlListKey ? restore : undefined;
   useEffect(() => {
-    if (restoreFor.current === null || restoreFor.current === urlListKey) return;
-    restoreFor.current = null;
-    onRestored();
-  }, [urlListKey, onRestored]);
+    if (restoreFor !== null && restoreFor !== urlListKey) onRestored();
+  }, [restoreFor, urlListKey, onRestored]);
 
   const editorAvailable = useEditorAvailable(drive);
   const note = useDayNote({

@@ -99,9 +99,6 @@ export function useDayNote({
 
   const drawn = useRef(marked);
   drawn.current = marked;
-  // A first read that finds the grid disagreeing is acted on once per scope,
-  // so a disagreement the core keeps cannot read the calendar in a loop.
-  const reconciled = useRef<Scope | null>(null);
 
   const commit = useCallback((s: Scope, patch: Partial<Model>) => {
     if (live.current !== s) return;
@@ -151,12 +148,10 @@ export function useDayNote({
       const changed =
         before.info === null || before.info.state !== info.state || before.info.file_id !== info.file_id;
       const moved = before.info !== null && before.info.state !== info.state;
-      const disagrees =
-        before.info === null &&
-        drawn.current !== null &&
-        drawn.current !== (info.state === "active") &&
-        reconciled.current !== s;
-      if (disagrees) reconciled.current = s;
+      // Only the first read of a scope compares with the grid; a later one
+      // compares with what it drew, so a disagreement the core keeps cannot
+      // read the calendar again and again.
+      const disagrees = before.info === null && drawn.current !== null && drawn.current !== (info.state === "active");
       if (moved || disagrees) onStateChanged();
       commit(s, {
         info,

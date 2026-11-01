@@ -2152,7 +2152,7 @@ describe("the panel heading on a day with no photos", () => {
   it("shows the date and no count", async () => {
     await open(OCT4);
     await screen.findByText("この日の写真はありません");
-    const heading = screen.getByText(/2026年10月4日\(日\)/);
+    const heading = screen.getByRole("heading", { name: /2026年10月4日/ });
     expect(heading.textContent).toBe("2026年10月4日(日)");
   });
 });
@@ -2249,7 +2249,7 @@ describe("SPEC-PD-006 I3: a first read that finds a state the grid does not show
     expect(reads(isDays)).toBe(1);
   });
 
-  it("a disagreement that persists is acted on once", async () => {
+  it("a disagreement that persists is acted on at the first read only", async () => {
     active("2026-10-03", "本文メモ", "n1");
     answer(
       isDays,
@@ -2263,6 +2263,9 @@ describe("SPEC-PD-006 I3: a first read that finds a state the grid does not show
     await screen.findByText("本文メモ");
     await sleep(600);
     expect(reads(isDays)).toBe(2);
+    await sleep(3000);
+    expect(noteReads("2026-10-03")).toBe(2);
+    expect(reads(isDays)).toBe(3);
   });
 });
 
