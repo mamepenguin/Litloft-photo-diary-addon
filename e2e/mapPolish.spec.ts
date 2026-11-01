@@ -8,8 +8,11 @@ import {
   DARK,
   FIXTURE_PATH,
   LIGHT,
+  MVT_TYPE,
   PNG,
+  TILE_HOST,
   TILE_PATTERN,
+  VECTOR_TILE,
   accentBorders,
   createMap,
   pinsOf,
@@ -499,6 +502,21 @@ test.describe("SPEC-PD-011: a pin is a photo with a count badge", () => {
     await expect(page.getByRole("button", { name: "3 photos", exact: true })).toBeVisible();
     // The data refreshed, which is what lets it ask again.
     await expect.poll(askedFor, { timeout: 5000 }).toBeGreaterThan(1);
+  });
+
+  test("pins are not held back while the tiles have not answered", async ({ page }) => {
+    const h = await prepare(page);
+    let release!: () => void;
+    const gate = new Promise<void>((r) => (release = r));
+    await page.route(`https://${TILE_HOST}/**`, async (route) => {
+      await gate;
+      await route.fulfill({ status: 200, contentType: MVT_TYPE, body: VECTOR_TILE });
+    });
+    await page.goto(FIXTURE_PATH);
+    await createMap(page, { points: same("a", 3, 35.6812, 139.7671), center: A, zoom: 12 });
+    await expect(pinsOf(page)).toHaveCount(1, { timeout: 4000 });
+    expect(h.tileRequests().length).toBeGreaterThan(0);
+    release();
   });
 
   test("I10: 50,000 located photos place pins for the view only, within three seconds", async ({ page }) => {
