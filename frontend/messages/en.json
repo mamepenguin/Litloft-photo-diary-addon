@@ -1,0 +1,34 @@
+{
+  "photoDiary": {
+    "nav": {
+      "label": "Photo Diary"
+    },
+    "loadError": "Could not load",
+    "retry": "Retry",
+    "notAvailable": "Not available on this drive",
+    "noDatedPhotos": "No photos with a capture date",
+    "noPhotosOnDay": "No photos on this day",
+    "noLocatedPhotos": "No photos with a location",
+    "tileError": "Map tiles could not be loaded",
+    "noWebgl": "The map cannot be shown on this device",
+    "view": {
+      "calendar": "Calendar",
+      "map": "Map",
+      "label": "View"
+    },
+    "month": {
+      "previous": "Previous month",
+      "next": "Next month",
+      "choose": "Choose month"
+    },
+    "close": "Close",
+    "undated": "No capture date",
+    "scope": "{drive} · {count, plural, one {# photo} other {# photos}}",
+    "calendar": {
+      "dayLabel": "{date}, {count, plural, one {# photo} other {# photos}}"
+    },
+    "list": {
+      "headingCount": "· {count, plural, one {# photo} other {# photos}}"
+    }
+  }
+}

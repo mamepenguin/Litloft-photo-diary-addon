@@ -1,0 +1,69 @@
+# Decisions
+
+decision:
+ran_in_app: yes
+at: a44cb4762b8c52eb06f24dfb8ac547803f4e4753
+by: agent
+evidence: Own stack (compose project litloft-r5, port 3177, temporary data and drives) with core 6f6c0b27f; Chromium through Playwright at 1440, 1280, 1920, 1024, 844, 768, 430, 390, 375, 360 and 320 px; Safari on an iOS 26 iPhone 17 Pro Simulator with idb touches; real OSM tiles. Worked as specified: calendar, day and undated lists with paging, history, the page URL table, map fit and limits, point lists split by date including identical coordinates at zoom 19, heading link and Back to the map, reload restore, refresh after trash and after a move to another drive, policy-off and locked drives, not-available, tile failure and recovery, no WebGL, refetch and later-page failures, tile requests only to the OSM host with an origin-only Referer, dark mode. Differences from the spec or the Design section: (1) Back from a photo restores the list depth but scrolls to 0, in day, undated and point lists, on desktop, phone and iOS Safari; session storage held scrollY 0 for a list at 7200. A reload does restore it. (2) The selected point never turns accent, for a single point or a cluster; the selection source holds the feature but no feature renders. (3) Retry after a MapLibre load failure never recovers: no asset request is made and the error stays until the page is reloaded (Chromium). (4) The month picker overflows the viewport on phones: right edge 426 px with "September 2026" in en at 320 to 390 px wide, 380 px in ja, and the page gains horizontal scroll. (5) The scope line has no photo count on the map view until the calendar has been opened: on a direct view=map, after Back from a photo, after a reload. Also observed: the Close control scrolls away with the list; on a phone the sheet covers the point just opened; the disabled next-month button is a filled circle; the count wraps in the day heading at 768 px. Failures were produced with blocked requests or a removed cookie, not a real outage. PHOTO_DIARY_TILE_URL, the 50,000-photo measurement and a pinch gesture were not run. Screenshots: /private/tmp/claude-502/-Users-libre-Sources-video-share/3cc43a00-a217-40bc-aeb6-704b58d12aea/scratchpad/r5/shots/ (d* desktop, p* phone, f* failures, g* writes, w* and n-picker-* widths, i* iOS Simulator).
+pending: The iOS app's own web view and a real device. The Simulator run used Safari; the app was not built.
+
+## Design Artifact
+
+Agreed by the user on 2026-10-31: https://claude.ai/artifact/6SugRqnoFULzNEbhw9EXhh
+
+The artifact is private to its owner. What it fixes:
+
+- Desktop: the list sits beside the calendar or the map, on the right, so neither is hidden.
+- Phone: the calendar's list follows the month grid; the map's list is a sheet over the map's lower edge.
+- A day with photos is a `--sand` surface with its day number and count. A day without photos is
+  plain muted text. The open day has an accent border, never a fill.
+- A map point is a plum circle with a white ring, showing its count when it stands for more than one
+  photo. Only the selected point is `--accent`.
+- The undated entry ends the month bar on desktop and follows the grid on phone.
+- The page header has the icon tile, the title and the scope line (drive and photo count). Calendar
+  and Map are underline tabs.
+
+## Spec ambiguity resolved by the author
+
+"A set URL with an unset attribution shows none": `/map-config` returns `attribution: ""`, since the
+field is a string in every other case.
+
+## Size measurement, 2026-11-01
+
+measurement:
+at: 63e2083
+by: agent
+machine: Apple M3 Max, Docker Desktop for the backend, Chromium with software GL for the map
+data: 50,000 generated `files` and `file_exif` rows in a test database (1 in 50 trashed, 1 in 20 without a capture date, 60% located, two thirds of those in 300 clusters of about 1 km); 120 months, 2,000 undated photos. The map: 50,000 generated points, a third of them at random places in the world and the rest in the 300 clusters.
+backend: pytest in the `Dockerfile.test` image, five requests after a warm-up, median in ms (the worst of the five was within 3 ms of it): `/calendar/months` 63, `/calendar/days?month=` 29, `/photos?date=&limit=40` 53, `/photos?undated=true&limit=40` 50, `/photos?undated=true&limit=100&offset=2000` 49, `/points` 159 (3,059 KiB). Each is inside 1 second.
+map: `createPhotoMap` resolved in 68 to 88 ms over three runs, and the first count label stood 617 to 1,100 ms after the call. Inside 3 seconds.
+selection: giving one photo to `setSelected` at 50,000 points drew its accent after 429 to 438 ms. The selection rebuilds the points source, which is what keeps the accent on the point that stands for exactly the list's photos at any zoom.
+not measured: a browser other than Chromium, a real GPU, a drive on a network share.
+
+decision:
+ran_in_app: yes
+at: 402f4672ddcc718a6a8ebb43f6c1c356085039a1
+by: agent
+evidence: Second run. Own stack (compose project litloft-r5b, port 3179, temporary data and drives) with core 6f6c0b27f; Chromium through Playwright at 1440, 1024, 900, 768, 430, 414, 390, 375, 360, 340 and 320 px, en and ja, with real OSM tiles and real writes through the core's context menu. The first run's five differences no longer occur: (1) Back from a photo restored scrollY and depth in the day list (1200, 112 loaded) and the undated list (900, 49 loaded), and scrollTop and depth in the point list (1500, 121 loaded; phone 900), desktop and 390 px. (2) The selected point draws in the accent, measured from screenshot pixels: single point and cluster, moved to the next point on replace, plum after close, accent after Back from a photo, after Back from a heading link and after a view switch; zooming into an opened cluster leaves both split points accent; a point opened at 7.4 goes plum when zoomed away into a larger point and accent again when zoomed back; dark mode. (3) Retry after a blocked library: a second blocked retry asks the network again and shows the error, an unblocked one draws the map. (4) The month picker stays on screen at 320 to 430 px in en and ja: left 16, right 240, no horizontal scroll, a choice works. (5) The scope line shows the count on a direct view=map, after Back, after a reload and after entering from the calendar, in both locales; a failed count read leaves the bare drive name and the map works. Also as specified: Close stays reachable and clickable at any scroll depth in day, undated and point lists at 1440, 1024, 768, 390 and 320 px; a bare URL through the sidebar row, through the search jump, through Back and on load clears the saved state and starts fresh, Forward to view=map then fits all points; the page's own Map and Calendar switch keeps the point list, its depth and the map position even when the URL ends bare, and keeps a day list; right-click on a photo in a point list opens the core's menu (Download, Add to collection, Copy, Cut, Copy ID, Rename, Move, Move to Trash), Move to Trash takes the header from 177 to 176, the marker from 121 to 120, the section from 112 to 111 and keeps scroll 1500 and the rest of the list; Rename and a same-drive Move keep depth and scroll; trashing the only photo of a point closes the list and removes the point; a day list keeps depth and scroll, shows its empty message at 0; an undated list emptied closes, drops undated and adds no history entry; a long press in the phone sheet opens the same menu and trash updates the count. Tile notice: appears on 503, network abort and an undecodable 200, in ja and on a phone; points still open lists; goes after recovery and after a failed tile is panned out of view; hidden with the calendar. A map whose view was left while /points or the library was slow, and one left and returned to through Back and Forward, is made on return at the same size and fit as a direct open and answers clicks; a window resized while hidden is honoured. PHOTO_DIARY_TILE_URL with a stand-in server: all tiles go there, URL only z/x/y (query string kept), Referer origin only, no other outside host, none on the calendar, attribution HTML visible at 1440 and 320; unset attribution shows none; empty URL gives the default URL and attribution. Search jump list: en photo and ja フォト list the row, mouse and keyboard reach the page, absent on a policy-off drive. Setup wizard on a real first run (empty data, autodetected drives): the addons step lists photo_diary with its description and a switch per drive, default on; turning it off for one drive wrote addons.photo_diary false, and after the restart that drive's page is the core's 404 with no row, and /admin/settings shows it off. Differences: (A) A tile answered with 404 raises no notice: blocked with 404, and with a stand-in server answering 404 above zoom 6 while the map went to 9, no notice after 11 s and a stretched parent tile; the same run with 503 shows the notice. The spec says any status, and a server that stops earlier shows the notice. (B) With only the worker file blocked, the base map draws and no points, with no error and no retry, and a reload does not help while it stays blocked; the main file blocked does show the error. Also observed: on a phone the sheet still covers the point just opened, the selected 121 is hidden but for its top edge. Failures other than the stand-in server were produced with blocked requests, not a real outage. Screenshots: /private/tmp/claude-502/-Users-libre-Sources-video-share/3cc43a00-a217-40bc-aeb6-704b58d12aea/scratchpad/r5b/shots/ (a* scroll and accent, b* picker, scope, close, bare URL, c* writes, d* and f* tile failure, hidden map and library, e* tile URL, g* emptied list and phone, h* search jump, w* wizard, i* single file blocked).
+pending: The iOS app's own web view and a real device. iOS Safari in the Simulator was not repeated in this run.
+
+## A 404 tile is not a failure
+
+Decided by the owner on 2026-11-01, on the second R-5's difference A. This replaces two sentences of
+the spec: the failure table's "with any status or a network error", and item 5's "one that stops
+earlier shows the tile notice when the viewer zooms past its limit".
+
+A 404 means there is no such tile. MapLibre keeps drawing the parent tile, stretched, and raises no
+error, so no notice appears. Any other failing status and a network error still raise the notice.
+
+## Findings not fixed
+
+Each was below the fix threshold (frequency x impact of 15 or more, or frequency of at least 1 with
+impact of at least 8). Details are in `code-r1.md`, `code-r2.md` and `mutation-r1.md`.
+
+- `code-r1.md`: B3 to B10, T1. B9 is a list of what the touch points omit: `PageHeader`, `PageTabs`,
+  `Button`, `DismissScrim`. The spec is not edited after approval, so it stays recorded here.
+- `code-r2.md`: A1, A2 (settled above), T2 to T6, B1 to B5.
+- `mutation-r1.md`: the surviving mutations other than the 24 closed.
+
+`code-r3.md`: findings 1 and 2 are fixed in `b380af9`. Findings 3 and 4 are below the threshold.

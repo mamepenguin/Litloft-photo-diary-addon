@@ -1,0 +1,168 @@
+# The step's exit code is the verdict. No test command is piped into `tee` or a
+# summariser, no step carries `continue-on-error`, and no run of vitest passes
+# `--reporter=json`: vitest reports an unhandled rejection as `Errors 1 error`
+# while printing every test as passed, and exits 1.
+#
+# The core's CI never sees this addon, which is not a submodule, so this
+# workflow is the only place its tests run. It runs against the core's
+# `develop` and on a weekly schedule, because a core change can break the
+# addon without a commit here.
+
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  schedule:
+    - cron: "0 3 * * 1"
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  backend:
+    name: backend (pytest against a core tree)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: addon
+
+      - uses: actions/checkout@v4
+        with:
+          repository: mamepenguin/Litloft
+          ref: develop
+          path: core
+
+      # No pipe: a `run:` step's default shell is `bash -e {0}`, so
+      # `producer | consumer` would report only the consumer's status.
+      - name: Put this commit at addons/photo_diary
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf core/addons/photo_diary
+          mkdir -p core/addons/photo_diary
+          cp -a addon/. core/addons/photo_diary/
+          rm -rf core/addons/photo_diary/.git
+
+      # The context is the core's root: the addon and the core `app` package it
+      # imports have to land in one tree.
+      - name: Build the test image
+        run: docker build -f addons/photo_diary/Dockerfile.test -t photo-diary-test .
+        working-directory: core
+
+      # The floor is the measured total truncated. It travels in
+      # `PYTEST_ADDOPTS`, which appends to the image's CMD; a command after the
+      # image name would replace the CMD. The same variable writes the JSON
+      # report, so if it does not take effect the next step fails on the
+      # missing file instead of passing for the wrong reason.
+      - name: Test
+        shell: bash
+        env:
+          COV_FLOOR: "100"
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/cov"
+          docker run --rm -v "$RUNNER_TEMP/cov:/out" \
+            -e PYTEST_ADDOPTS="--cov-fail-under=$COV_FLOOR --cov-report=json:/out/cov.json" \
+            photo-diary-test
+
+      # A floor cannot see the denominator shrink. This compares the measured
+      # files, as a set, against an independent walk of this checkout.
+      - name: Verify the floor was applied, over the right population
+        shell: bash
+        env:
+          COV_FLOOR: "100"
+        run: |
+          set -euo pipefail
+          python3 addon/scripts/check-coverage-population.py "$RUNNER_TEMP/cov/cov.json" "$COV_FLOOR"
+
+  frontend:
+    name: frontend (vitest, tsc, eslint, Chromium)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: addon
+
+      - uses: actions/checkout@v4
+        with:
+          repository: mamepenguin/Litloft
+          ref: develop
+          submodules: recursive
+          path: core
+
+      - name: Put this commit at addons/photo_diary
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf core/addons/photo_diary
+          mkdir -p core/addons/photo_diary
+          cp -a addon/. core/addons/photo_diary/
+          rm -rf core/addons/photo_diary/.git
+
+      - uses: pnpm/action-setup@v4
+        with:
+          package_json_file: core/frontend/package.json
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+          cache-dependency-path: core/frontend/pnpm-lock.yaml
+
+      # Builds `frontend/src/addons/<name>/`, a real directory of one symlink
+      # per file. Without it vitest collects nothing from the addon and the run
+      # is green for the wrong reason.
+      - name: Link addons into backend/ and frontend/
+        run: ./setup-addons.sh
+        working-directory: core
+
+      - name: Install frontend dependencies
+        run: pnpm install --frozen-lockfile
+        working-directory: core/frontend
+
+      - name: Merge addon translations
+        run: node scripts/merge-addon-messages.mjs
+        working-directory: core/frontend
+
+      - name: Fail if this addon's tests were not collected
+        shell: bash
+        working-directory: core/frontend
+        run: |
+          set -euo pipefail
+          collected="$(pnpm exec vitest list --filesOnly)"
+          printf '%s\n' "$collected" | grep -q '^src/addons/photo_diary/' || {
+            echo "::error::vitest collected no tests from addons/photo_diary"
+            exit 1
+          }
+
+      # Only this addon's tests. The core's full suite is not run: its guards
+      # declare the addons by name and fail when this one is present.
+      - name: Test
+        run: pnpm exec vitest run src/addons/photo_diary
+        working-directory: core/frontend
+
+      - name: Type-check
+        run: pnpm exec tsc --noEmit
+        working-directory: core/frontend
+
+      # The core's eslint config ignores `src/addons/**`, so the addon's files
+      # are linted with the ignore removed.
+      - name: Lint
+        run: pnpm exec eslint --no-ignore src/addons/photo_diary
+        working-directory: core/frontend
+
+      - name: Install Chromium
+        run: pnpm exec playwright install --with-deps chromium
+        working-directory: core/frontend
+
+      - name: Browser tests
+        run: pnpm exec playwright test -c ../addons/photo_diary/e2e/playwright.config.ts
+        working-directory: core/frontend
