@@ -1,13 +1,12 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState, type MutableRefObject } from "react";
-import { MapPinOff, X } from "lucide-react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type MutableRefObject } from "react";
+import { MapPinOff } from "lucide-react";
 import { useTranslations } from "next-intl";
-import { Button } from "@/components/Button";
 import { fetchMapConfig, fetchPoints, type Point } from "./api";
 import { isNotFound } from "./lib/errors";
 import { LoadError } from "./LoadError";
-import { PhotoList, type ListPosition } from "./PhotoList";
+import { CloseControl, PhotoList, type ListPosition } from "./PhotoList";
 import { SectionedGrids } from "./SectionedGrids";
 import { useWide } from "./useWide";
 import { groupSections } from "./lib/sections";
@@ -39,7 +38,7 @@ type Props = {
 };
 
 const PANEL_CLASS =
-  "absolute inset-x-0 bottom-0 z-10 max-h-[60%] rounded-t-xl border-t border-bg-border bg-bg-primary p-4 " +
+  "absolute inset-x-0 bottom-0 z-10 max-h-[60%] rounded-t-xl border-t border-bg-border bg-bg-primary px-4 pt-4 pb-[max(1rem,env(safe-area-inset-bottom))] " +
   "group-data-[wide=true]/diary:static group-data-[wide=true]/diary:max-h-none group-data-[wide=true]/diary:w-[22rem] group-data-[wide=true]/diary:shrink-0 group-data-[wide=true]/diary:rounded-none group-data-[wide=true]/diary:border-l group-data-[wide=true]/diary:border-t-0";
 
 function sameMembers(open: string[] | null, ids: string[]): boolean {
@@ -78,6 +77,8 @@ export function MapView({
   const [refreshFailed, setRefreshFailed] = useState(false);
   const [token, setToken] = useState(0);
 
+  const stage = useRef<HTMLDivElement | null>(null);
+  const [stageOffset, setStageOffset] = useState<number | null>(null);
   const host = useRef<HTMLDivElement | null>(null);
   const handle = useRef<PhotoMap | null>(null);
   const config = useRef<MapConfig | null>(null);
@@ -180,6 +181,7 @@ export function MapView({
       center: view?.center,
       zoom: view?.zoom,
       selected: openIdsRef.current ?? undefined,
+      pinLabel: (count) => t("pin.label", { count }),
       onPointClick: (ids) => {
         if (sameMembers(openIdsRef.current, ids)) return;
         setListError(null);
@@ -224,6 +226,10 @@ export function MapView({
     handle.current?.setSelected(openIds);
   }, [openIds]);
 
+  useEffect(() => {
+    if (active) handle.current?.resume();
+  }, [active]);
+
   useEffect(
     () => () => {
       handle.current?.destroy();
@@ -258,11 +264,27 @@ export function MapView({
   const listKey = `point:${listSeq}`;
   const showMap = phase === "creating" || phase === "ready";
 
+  // The stage runs from where it starts in the document to the bottom of the
+  // viewport. A view that is not on screen has no position to read.
+  const measureStage = useCallback(() => {
+    if (!active || !stage.current) return;
+    setStageOffset(stage.current.getBoundingClientRect().top + window.scrollY);
+  }, [active]);
+  useLayoutEffect(() => {
+    measureStage();
+  }, [measureStage, showMap, refreshFailed, phase]);
+  useEffect(() => {
+    window.addEventListener("resize", measureStage);
+    return () => window.removeEventListener("resize", measureStage);
+  }, [measureStage]);
+
   return (
-    <div ref={ref} data-wide={wide} className="group/diary px-4 pb-6">
-      {refreshFailed && <LoadError onRetry={refresh} />}
-      {phase === "failed" && <LoadError onRetry={retryLoad} />}
-      {phase === "libFailed" && <LoadError onRetry={retryLoad} />}
+    <div ref={ref} data-wide={wide} className={`group/diary ${showMap ? "" : "px-4 pb-6"}`}>
+      <div className={showMap ? "px-4" : ""}>
+        {refreshFailed && <LoadError onRetry={refresh} />}
+        {phase === "failed" && <LoadError onRetry={retryLoad} />}
+        {phase === "libFailed" && <LoadError onRetry={retryLoad} />}
+      </div>
 
       {phase === "loading" && (
         <div className="h-[24rem] animate-pulse rounded-xl bg-bg-elevated" aria-busy="true" />
@@ -283,7 +305,11 @@ export function MapView({
       )}
 
       {showMap && (
-        <div className="relative flex h-[70dvh] min-h-[24rem] overflow-hidden rounded-xl border border-bg-border">
+        <div
+          ref={stage}
+          style={{ height: stageOffset === null ? "70dvh" : `calc(100dvh - ${stageOffset}px)` }}
+          className="relative flex min-h-[24rem] overflow-hidden"
+        >
           <div ref={host} className="relative h-full min-w-0 flex-1" aria-busy={phase === "creating"} />
           {tileFailing && (
             <div
@@ -322,10 +348,7 @@ export function MapView({
           {listError !== null && (
             <div className={`${PANEL_CLASS} overflow-y-auto`}>
               <div className="flex justify-end pb-3">
-                <Button size="sm" onClick={closeList}>
-                  <X size={14} aria-hidden="true" />
-                  {t("close")}
-                </Button>
+                <CloseControl label={t("close")} onClick={closeList} />
               </div>
               <LoadError onRetry={listError.retry} />
             </div>

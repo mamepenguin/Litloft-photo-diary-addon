@@ -233,7 +233,7 @@ function setDefaults() {
     want.filter((id) => !h.missing.has(id)).map((id) => ({ id, filename: `${id}.jpg` }))) as any);
   vi.mocked(mapModule.createPhotoMap).mockImplementation((async (_el: HTMLElement, options: any) => {
     h.mapOptions.current = options;
-    const handle = { setPoints: vi.fn(), setSelected: vi.fn(), destroy: vi.fn() };
+    const handle = { setPoints: vi.fn(), setSelected: vi.fn(), resume: vi.fn(), destroy: vi.fn() };
     h.handles.push(handle);
     return handle;
   }) as any);
@@ -1607,7 +1607,7 @@ describe("the map's lifetime", () => {
     const { unmount } = await settled("?view=map");
     await waitFor(() => expect(mapModule.createPhotoMap).toHaveBeenCalled());
     unmount();
-    const handle = { setPoints: vi.fn(), setSelected: vi.fn(), destroy: vi.fn() };
+    const handle = { setPoints: vi.fn(), setSelected: vi.fn(), resume: vi.fn(), destroy: vi.fn() };
     await act(async () => slow.resolve(handle));
     expect(handle.destroy).toHaveBeenCalledTimes(1);
   });
@@ -1622,7 +1622,7 @@ describe("the map's lifetime", () => {
     data.family.points = next;
     await click(screen.getAllByText("mock-refresh")[0]);
     await waitFor(() => expect(api.fetchPoints).toHaveBeenCalledTimes(2));
-    const handle = { setPoints: vi.fn(), setSelected: vi.fn(), destroy: vi.fn() };
+    const handle = { setPoints: vi.fn(), setSelected: vi.fn(), resume: vi.fn(), destroy: vi.fn() };
     await act(async () => slow.resolve(handle));
     expect(handle.setPoints).toHaveBeenCalledWith(next);
   });

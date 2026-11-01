@@ -11,10 +11,14 @@ import { LoadError } from "./LoadError";
 import { MonthGrid, type DayInfo } from "./MonthGrid";
 import { NoteArea } from "./NoteArea";
 import { MonthPicker } from "./MonthPicker";
+import { DayPreviewImage } from "./DayPreview";
 import { PhotoList, type ListPosition } from "./PhotoList";
 import { useDayNote } from "./useDayNote";
+import { useDayPreview } from "./useDayPreview";
 import { useEditorAvailable } from "./useEditorAvailable";
+import { appHeaderHeight, useHeldColumn, useReachedHeader } from "./usePinned";
 import { useWide } from "./useWide";
+import { STRIP_HEIGHT, WeekStrip } from "./WeekStrip";
 import { formatListDate, formatMonth, localToday } from "./lib/dates";
 import { photoTotal } from "./lib/total";
 import type { PageUrl } from "./lib/pageUrl";
@@ -27,6 +31,8 @@ type Days = { month: string; byDate: ReadonlyMap<string, DayInfo> };
 // waiting for it, so the first read after coming back can overtake that save.
 const SECOND_READ_MS = 3000;
 const NO_DAYS: ReadonlyMap<string, DayInfo> = new Map();
+// The stylesheet generator reads class names as written, so the 16 here is HOLD_GAP spelled out.
+const HELD = "group-data-[wide=true]/diary:sticky group-data-[wide=true]/diary:top-[calc(var(--app-header-h,0px)+16px)]";
 
 type Props = {
   drive: string;
@@ -38,6 +44,8 @@ type Props = {
   onRestored: () => void;
   onNotAvailable: () => void;
   onTotal: (total: number) => void;
+  /** The page was opened with no query, so the first month drawn fades in. */
+  freshStart: boolean;
 };
 
 export function CalendarView({
@@ -50,10 +58,15 @@ export function CalendarView({
   onRestored,
   onNotAvailable,
   onTotal,
+  freshStart,
 }: Props) {
   const t = useTranslations("photoDiary");
   const locale = useLocale();
   const { ref, wide } = useWide<HTMLDivElement>();
+  const column = useHeldColumn(active);
+  const gridArea = useRef<HTMLDivElement | null>(null);
+  const monthBar = useRef<HTMLDivElement | null>(null);
+  const scrollOnSettle = useRef<string | null>(null);
 
   const [months, setMonths] = useState<Months | null>(null);
   const [monthsFailed, setMonthsFailed] = useState(false);
@@ -184,6 +197,35 @@ export function CalendarView({
     if (restoreFor !== null && restoreFor !== urlListKey) onRestored();
   }, [restoreFor, urlListKey, onRestored]);
 
+  const preview = useDayPreview({ drive, active, month, version: days });
+
+  const stripEligible = active && !wide && openDate !== null && daysForMonth !== null;
+  const marker = useReachedHeader(stripEligible);
+  const stripShown = stripEligible && marker.reached;
+
+  const stripPick = (date: string) => {
+    if (date === openDate) return;
+    scrollOnSettle.current = date;
+    go("push", { month, date });
+  };
+  // The list is the first thing in its element, so its top is its heading's.
+  const listSettled = (list: HTMLElement) => {
+    if (scrollOnSettle.current === null || scrollOnSettle.current !== url.date) return;
+    scrollOnSettle.current = null;
+    const top = window.scrollY + list.getBoundingClientRect().top - appHeaderHeight() - STRIP_HEIGHT;
+    window.scrollTo({ top, behavior: "instant" });
+  };
+  const stripBack = () => {
+    const bar = monthBar.current;
+    if (bar) {
+      window.scrollTo({
+        top: window.scrollY + bar.getBoundingClientRect().top - appHeaderHeight(),
+        behavior: "instant",
+      });
+    }
+    gridArea.current?.querySelector<HTMLElement>(`button[data-date="${openDate}"]`)?.focus({ preventScroll: true });
+  };
+
   const editorAvailable = useEditorAvailable(drive);
   const note = useDayNote({
     drive,
@@ -228,9 +270,14 @@ export function CalendarView({
       )}
 
       {months !== null && (
-        <div className="grid gap-6 group-data-[wide=true]/diary:grid-cols-[minmax(0,26rem)_minmax(0,1fr)] group-data-[wide=true]/diary:items-start">
-          <div className="grid gap-3 [grid-template-areas:'bar'_'grid'_'undated'] group-data-[wide=true]/diary:grid-cols-[minmax(0,1fr)_auto] group-data-[wide=true]/diary:[grid-template-areas:'bar_undated'_'grid_grid']">
-            <div className="relative flex flex-wrap items-center gap-1 [grid-area:bar]">
+        <div className="grid group-data-[wide=true]/diary:grid-cols-[minmax(0,26rem)_minmax(0,1fr)] group-data-[wide=true]/diary:items-start group-data-[wide=true]/diary:gap-6">
+          <div
+            ref={column.ref}
+            className={`grid gap-3 [grid-template-areas:'bar'_'grid'_'undated'] group-data-[wide=true]/diary:grid-cols-[minmax(0,1fr)_auto] group-data-[wide=true]/diary:[grid-template-areas:'bar_undated'_'grid_grid'] ${
+              column.fits ? HELD : ""
+            }`}
+          >
+            <div ref={monthBar} className="relative flex flex-wrap items-center gap-1 [grid-area:bar]">
               {month && (
                 <>
                   <Button
@@ -266,7 +313,7 @@ export function CalendarView({
               </Button>
             </div>
 
-            <div className="[grid-area:grid]">
+            <div ref={gridArea} className="[grid-area:grid]">
               {month ? (
                 daysFailedFor === month && !daysForMonth ? (
                   <LoadError onRetry={refresh} />
@@ -276,6 +323,9 @@ export function CalendarView({
                     days={daysForMonth ?? new Map()}
                     openDate={openDate}
                     loading={!daysForMonth}
+                    active={active}
+                    freshStart={freshStart}
+                    preview={preview}
                     onPick={(date) => {
                       if (date !== openDate) go("push", { month, date });
                     }}
@@ -305,6 +355,14 @@ export function CalendarView({
             )}
           </div>
 
+          {stripEligible && !wide && (
+            <div ref={marker.ref} className="sticky top-[var(--app-header-h,0px)] z-20 h-0">
+              {stripShown && daysForMonth && openDate && month && (
+                <WeekStrip month={month} openDate={openDate} days={daysForMonth} onPick={stripPick} onBack={stripBack} />
+              )}
+            </div>
+          )}
+
           {listKind !== null && (
             <PhotoList
               key={listKey}
@@ -320,6 +378,8 @@ export function CalendarView({
                 ) : undefined
               }
               noteSettled={listKind === "day" ? note.settled : undefined}
+              onSettled={listSettled}
+              headingOffset={stripShown ? STRIP_HEIGHT : 0}
               positionRef={positionRef}
               emptyMessage={listKind === "day" ? t("noPhotosOnDay") : undefined}
               onEmpty={listKind === "undated" ? closeEmptyUndated : undefined}
@@ -337,7 +397,7 @@ export function CalendarView({
               onNotAvailable={onNotAvailable}
               onRefreshResult={onListResult}
               onRestored={onRestored}
-              className="min-w-0"
+              className="min-w-0 group-data-[wide=false]/diary:mt-6"
             >
               {({ files, moreMayFollow }) => (
                 <FileGrid files={files} moreMayFollow={moreMayFollow} onRefresh={refresh} />
@@ -345,6 +405,9 @@ export function CalendarView({
             </PhotoList>
           )}
         </div>
+      )}
+      {preview.view && (
+        <DayPreviewImage view={preview.view} onLoad={preview.imageLoaded} onError={preview.imageFailed} />
       )}
     </div>
   );

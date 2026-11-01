@@ -10,7 +10,6 @@ import coreJa from "@/messages-core/ja.json";
 import ja from "./messages/ja.json";
 import Page from "./Page";
 import * as api from "./api";
-import * as mapModule from "./map/createPhotoMap";
 
 const h = vi.hoisted(() => ({ listeners: new Set<() => void>() }));
 
@@ -223,7 +222,8 @@ describe("SPEC-PD-008 I1: a day's surface step is decided by its count", () => {
 });
 
 function within(button: HTMLElement, text: string): HTMLElement {
-  const el = Array.from(button.querySelectorAll("*")).find((e) => e.children.length === 0 && e.textContent === text);
+  // The last match: on a day whose number equals its count, the count comes second.
+  const el = Array.from(button.querySelectorAll("*")).findLast((e) => e.children.length === 0 && e.textContent === text);
   if (!el) throw new Error(`no element with text ${text} in ${button.outerHTML}`);
   return el as HTMLElement;
 }

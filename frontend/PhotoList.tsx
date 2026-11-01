@@ -13,7 +13,19 @@ import { usePagedPhotos, type FetchIds } from "./usePagedPhotos";
 // publishes its height.
 const HEADING_ROW = "sticky z-10 flex items-center gap-3 bg-bg-primary pb-3";
 const PANEL_HEADING = "top-0";
-const PAGE_HEADING = "top-[var(--app-header-h,0px)]";
+const PAGE_HEADING_TOP = "var(--app-header-h, 0px)";
+
+/**
+ * The colour is forced: the button recipe sets `text-text-primary` and the
+ * stylesheet puts it after `text-text-muted`, which would otherwise lose.
+ */
+export function CloseControl({ label, onClick }: { label: string; onClick: () => void }) {
+  return (
+    <Button iconOnly variant="ghost" aria-label={label} className="text-text-muted!" onClick={onClick}>
+      <X size={16} aria-hidden="true" />
+    </Button>
+  );
+}
 
 export type ListPosition = { loaded: () => number; scrollY: () => number };
 
@@ -34,6 +46,10 @@ type Props = {
    * afterwards.
    */
   noteSettled?: boolean;
+  /** Called once when the list has its photos or has failed, and the note has settled; receives the list's element. */
+  onSettled?: (list: HTMLElement) => void;
+  /** Height of what the page pins under the app header above the page heading. Not used by a panel. */
+  headingOffset?: number;
   positionRef: MutableRefObject<ListPosition | null>;
   heading?: (total: number | null) => ReactNode;
   emptyMessage?: string;
@@ -55,6 +71,8 @@ export function PhotoList({
   restore,
   note,
   noteSettled = true,
+  onSettled,
+  headingOffset = 0,
   positionRef,
   heading,
   emptyMessage,
@@ -113,6 +131,13 @@ export function PhotoList({
     onRestored();
   }, [phase, noteSettled, scroller, onRestored]);
 
+  const settled = (phase === "ready" || phase === "failed") && noteSettled;
+  const onSettledRef = useRef(onSettled);
+  onSettledRef.current = onSettled;
+  useEffect(() => {
+    if (settled && panel.current) onSettledRef.current?.(panel.current);
+  }, [settled]);
+
   const empty = phase === "ready" && total === 0;
   useEffect(() => {
     if (empty) onEmpty?.();
@@ -137,12 +162,12 @@ export function PhotoList({
       ref={panel}
       className={[scroller === "panel" ? "overflow-y-auto" : "", className ?? ""].join(" ").trim()}
     >
-      <div className={`${HEADING_ROW} ${scroller === "panel" ? PANEL_HEADING : PAGE_HEADING}`}>
+      <div
+        className={`${HEADING_ROW} ${scroller === "panel" ? PANEL_HEADING : ""}`}
+        style={scroller === "window" ? { top: `calc(${PAGE_HEADING_TOP} + ${headingOffset}px)` } : undefined}
+      >
         <div className="min-w-0 flex-1">{heading?.(total)}</div>
-        <Button size="sm" onClick={onClose}>
-          <X size={14} aria-hidden="true" />
-          {t("close")}
-        </Button>
+        <CloseControl label={t("close")} onClick={onClose} />
       </div>
 
       {note}

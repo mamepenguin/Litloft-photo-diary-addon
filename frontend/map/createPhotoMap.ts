@@ -1,4 +1,5 @@
 import type { Point } from "../api";
+import { baseLayers, glyphUrl, paintFor, TILE_MAX_ZOOM, TILE_SOURCE, type Theme } from "./mapStyle";
 
 const ASSET_BASE = "/api/addons/photo_diary/assets/";
 const VERSION = "6.16.0";
@@ -9,7 +10,9 @@ const STYLESHEET_ID = "photo-diary-maplibre-css";
 
 const MAX_ZOOM = 19;
 const FIT_MAX_ZOOM = 15;
-const CLUSTER_RADIUS = 40;
+// Pins are 44 to 68 px wide, so a smaller radius would let one cover another
+// completely.
+const CLUSTER_RADIUS = 64;
 // Clustering has to run at the map's top zoom, or photos with identical
 // coordinates would be separate points there. MapLibre warns, on every map,
 // when the source's maxzoom is not above clusterMaxZoom; the map never goes
@@ -17,7 +20,11 @@ const CLUSTER_RADIUS = 40;
 const CLUSTER_MAX_ZOOM = MAX_ZOOM;
 const SOURCE_MAX_ZOOM = MAX_ZOOM + 1;
 
-const PLUM = "#211922";
+/** A pin exists while its point is inside the view plus this margin, one pin's width. */
+const PIN_MARGIN = 68;
+const MOVE_SYNC_MS = 150;
+/** A press that moved further than this was a drag, which a button does not report as one. */
+const PRESS_SLOP = 6;
 
 export class WebGLUnavailableError extends Error {
   constructor(message = "WebGL is unavailable") {
@@ -38,39 +45,29 @@ interface GeoJSONSourceLike {
   getClusterLeaves(clusterId: number, limit: number, offset: number): Promise<Feature[]>;
 }
 
-interface RasterSourceLike {
+interface TileSourceLike {
   setTiles(tiles: string[]): void;
 }
 
 interface MapLike {
   getSource(id: "points"): GeoJSONSourceLike | undefined;
-  getSource(id: "tiles"): RasterSourceLike | undefined;
+  getSource(id: "tiles"): TileSourceLike | undefined;
   addControl(control: unknown, position?: string): void;
   on(type: string, listener: (event: never) => void): void;
   once(type: string, listener: () => void): void;
-  off(type: string, listener: (event: never) => void): void;
   project(lngLat: LngLat): { x: number; y: number };
-  queryRenderedFeatures(
-    geometry: [[number, number], [number, number]] | { x: number; y: number },
-    options?: { layers?: string[] },
-  ): Feature[];
   querySourceFeatures(source: string, options?: { filter?: unknown[] }): Feature[];
+  setPaintProperty(layer: string, property: string, value: unknown): void;
   getCenter(): { lng: number; lat: number };
   getZoom(): number;
   getCanvas(): HTMLCanvasElement;
+  getCanvasContainer(): HTMLElement;
   isStyleLoaded(): boolean;
-  remove(): void;
-}
-
-interface MarkerLike {
-  setLngLat(lngLat: LngLat): MarkerLike;
-  addTo(map: MapLike): MarkerLike;
   remove(): void;
 }
 
 interface MapLibreModule {
   Map: new (options: Record<string, unknown>) => MapLike;
-  Marker: new (options: { element: HTMLElement; anchor: string }) => MarkerLike;
   AttributionControl: new (options: { compact: boolean }) => unknown;
   NavigationControl: new (options: { showCompass: boolean }) => unknown;
   setWorkerUrl(url: string): void;
@@ -82,8 +79,10 @@ export interface PhotoMapOptions {
   attribution: string;
   center?: LngLat;
   zoom?: number;
-  /** Ids of the photos whose list is open; the point they make up is drawn in the accent colour. */
+  /** Ids of the photos whose list is open; the pin they make up has an accent border. */
   selected?: string[];
+  /** The name of a pin standing for `count` photos. */
+  pinLabel: (count: number) => string;
   onPointClick: (fileIds: string[]) => void;
   /** `retry` reads the same point's members again. */
   onPointError: (error: Error, retry: () => void) => void;
@@ -92,9 +91,12 @@ export interface PhotoMapOptions {
 }
 
 export interface PhotoMap {
+  /** Refreshing the data is also what lets a pin whose thumbnail failed ask for it again. */
   setPoints(points: Point[]): void;
-  /** Draws in the accent colour each point that stands only for photos among `ids`. */
+  /** Gives the pin that stands only for photos among `ids` its accent border. */
   setSelected(ids: string[] | null): void;
+  /** The view is on screen again: applies a theme change that waited, and places the pins. */
+  resume(): void;
   destroy(): void;
 }
 
@@ -138,6 +140,7 @@ function loadLibrary(): Promise<MapLibreModule> {
   return library;
 }
 
+
 function ensureStylesheet(): void {
   if (document.getElementById(STYLESHEET_ID)) return;
   const link = document.createElement("link");
@@ -147,22 +150,37 @@ function ensureStylesheet(): void {
   document.head.appendChild(link);
 }
 
+/**
+ * Ranks the points for the pin photo: the newest dated photo comes first, then
+ * the undated ones in the order given. A cluster keeps the lowest rank of its
+ * members, so a pin's photo is read without a request.
+ */
+function rankPoints(points: Point[]): { rankOf: Map<string, number>; idAt: string[] } {
+  const dated: number[] = [];
+  const undated: number[] = [];
+  points.forEach((p, i) => (p.taken_at === null ? undated : dated).push(i));
+  dated.sort((a, b) => {
+    const x = points[a].taken_at as string;
+    const y = points[b].taken_at as string;
+    return x === y ? b - a : x < y ? 1 : -1;
+  });
+  const idAt = [...dated, ...undated].map((i) => points[i].file_id);
+  return { rankOf: new Map(idAt.map((id, rank) => [id, rank])), idAt };
+}
+
 // `sel` is 1 for a selected photo. A cluster sums it, so a point is selected
 // exactly when the sum equals the number of photos it stands for, at whatever
 // zoom the map is drawn.
-function toCollection(points: Point[], selected: ReadonlySet<string>) {
+function toCollection(points: Point[], selected: ReadonlySet<string>, rankOf: ReadonlyMap<string, number>) {
   return {
     type: "FeatureCollection",
     features: points.map((p) => ({
       type: "Feature",
-      properties: { id: p.file_id, sel: selected.has(p.file_id) ? 1 : 0 },
+      properties: { id: p.file_id, sel: selected.has(p.file_id) ? 1 : 0, rank: rankOf.get(p.file_id) },
       geometry: { type: "Point", coordinates: [p.lon, p.lat] },
     })),
   };
 }
-
-const clusterSelected = ["==", ["get", "selected"], ["get", "point_count"]];
-const singleSelected = ["==", ["get", "sel"], 1];
 
 function boundsOf(points: Point[]): [LngLat, LngLat] {
   let west = Infinity;
@@ -181,69 +199,74 @@ function boundsOf(points: Point[]): [LngLat, LngLat] {
   ];
 }
 
-function countLabel(count: number): HTMLElement {
-  const element = document.createElement("div");
-  element.textContent = String(count);
-  element.style.cssText =
-    "pointer-events:none;color:#fff;font:600 12px/1 system-ui,sans-serif;" +
-    "font-variant-numeric:tabular-nums;text-shadow:none";
-  return element;
-}
+const currentTheme = (): Theme => (document.documentElement.dataset.theme === "dark" ? "dark" : "light");
 
-// A GL paint cannot read a CSS variable, so the token is resolved here.
-function accentColor(): string {
-  return getComputedStyle(document.documentElement).getPropertyValue("--accent").trim();
-}
-
-function buildStyle(options: PhotoMapOptions) {
-  const accent = accentColor();
-  const ring = { "circle-stroke-color": "#ffffff", "circle-stroke-width": 2 };
+function buildStyle(options: PhotoMapOptions, data: unknown) {
+  // The circle layers draw nothing: a source with no layer loads no tiles, so
+  // they keep the points coming while the pins are drawn as elements.
+  const unseen = { "circle-radius": 1, "circle-opacity": 0, "circle-stroke-opacity": 0 };
   return {
     version: 8,
+    glyphs: glyphUrl(window.location.origin, ASSET_BASE),
     sources: {
-      tiles: {
-        type: "raster",
+      [TILE_SOURCE]: {
+        type: "vector",
         tiles: [options.tileUrl],
-        tileSize: 256,
-        maxzoom: MAX_ZOOM,
+        maxzoom: TILE_MAX_ZOOM,
         attribution: options.attribution,
       },
       points: {
         type: "geojson",
-        data: toCollection(options.points, new Set(options.selected)),
+        data,
         cluster: true,
         clusterRadius: CLUSTER_RADIUS,
         clusterMaxZoom: CLUSTER_MAX_ZOOM,
-        clusterProperties: { selected: ["+", ["get", "sel"]] },
+        clusterProperties: { selected: ["+", ["get", "sel"]], best: ["min", ["get", "rank"]] },
         maxzoom: SOURCE_MAX_ZOOM,
       },
     },
     layers: [
-      { id: "tiles", type: "raster", source: "tiles" },
-      {
-        id: "clusters",
-        type: "circle",
-        source: "points",
-        filter: ["has", "point_count"],
-        paint: {
-          "circle-color": ["case", clusterSelected, accent, PLUM],
-          "circle-radius": ["step", ["get", "point_count"], 14, 10, 17, 100, 20],
-          ...ring,
-        },
-      },
-      {
-        id: "singles",
-        type: "circle",
-        source: "points",
-        filter: ["!", ["has", "point_count"]],
-        paint: { "circle-color": ["case", singleSelected, accent, PLUM], "circle-radius": 8, ...ring },
-      },
+      ...baseLayers(currentTheme()),
+      { id: "clusters", type: "circle", source: "points", filter: ["has", "point_count"], paint: unseen },
+      { id: "singles", type: "circle", source: "points", filter: ["!", ["has", "point_count"]], paint: unseen },
     ],
   };
 }
 
-const POINT_LAYERS = ["clusters", "singles"];
-const HIT_SLOP = 4;
+interface Pin {
+  key: string;
+  count: number;
+  photoId: string;
+  lngLat: LngLat;
+  clusterId: number | null;
+  selected: boolean;
+  side: number;
+  element: HTMLButtonElement;
+  image: HTMLImageElement;
+}
+
+interface Seen {
+  key: string;
+  count: number;
+  photoId: string;
+  lngLat: LngLat;
+  clusterId: number | null;
+  selected: boolean;
+}
+
+const sideFor = (count: number) => (count < 10 ? 44 : count < 20 ? 50 : count < 100 ? 58 : 68);
+const thumbnailUrl = (id: string) => `/api/files/${encodeURIComponent(id)}/thumbnail`;
+
+function createBadge(count: number): HTMLElement {
+  const badge = document.createElement("span");
+  badge.textContent = String(count);
+  badge.setAttribute("aria-hidden", "true");
+  badge.style.cssText =
+    "position:absolute;top:-7px;right:-7px;box-sizing:border-box;height:18px;min-width:18px;padding:0 5px;" +
+    "border:1.5px solid #fff;border-radius:9px;background:#211922;color:#fff;" +
+    "font:600 11px/15px system-ui,sans-serif;font-variant-numeric:tabular-nums;text-align:center;pointer-events:none";
+  return badge;
+}
 
 export async function createPhotoMap(
   container: HTMLElement,
@@ -251,6 +274,10 @@ export async function createPhotoMap(
 ): Promise<PhotoMap> {
   const maplibre = await loadLibrary();
   ensureStylesheet();
+
+  let currentPoints = options.points;
+  let ranking = rankPoints(currentPoints);
+  let selected = new Set(options.selected);
 
   const view = options.center
     ? { center: options.center, zoom: options.zoom ?? FIT_MAX_ZOOM }
@@ -262,9 +289,11 @@ export async function createPhotoMap(
   try {
     map = new maplibre.Map({
       container,
-      style: buildStyle(options),
+      style: buildStyle(options, toCollection(currentPoints, selected, ranking.rankOf)),
       maxZoom: MAX_ZOOM,
       attributionControl: false,
+      // Han, kana and Hangul are drawn with the page's own fonts.
+      localIdeographFontFamily: getComputedStyle(document.body).fontFamily,
       ...view,
     });
   } catch (error) {
@@ -280,84 +309,187 @@ export async function createPhotoMap(
   map.addControl(new maplibre.AttributionControl({ compact: false }), "top-left");
   map.addControl(new maplibre.NavigationControl({ showCompass: false }), "top-right");
 
-  const labels = new Map<number, { marker: MarkerLike; count: number }>();
-  let currentPoints = options.points;
-  let selected = new Set(options.selected);
+  // Its own stacking context, so the pins' order among themselves cannot
+  // reach the map's controls, the notice or the sheet.
+  const layer = document.createElement("div");
+  layer.style.cssText = "position:absolute;inset:0;z-index:1;overflow:hidden;pointer-events:none";
+  map.getCanvasContainer().appendChild(layer);
+
+  const pins = new Map<string, Pin>();
+  const failedPhotos = new Set<string>();
+  let appliedTheme = currentTheme();
+  let loaded = false;
+  // The data was replaced and its tiles are not back yet. Until they are, the
+  // features read are the old ones or none, and a pin is neither added nor
+  // removed on that evidence.
+  let dataPending = true;
   let tileFailed = false;
   let reportedFailing = false;
   let verifyingTiles = false;
   let destroyed = false;
+  let moveTimer: ReturnType<typeof setTimeout> | null = null;
 
-  const pointFeaturesAt = (position: { x: number; y: number }) =>
-    map.queryRenderedFeatures(
-      [
-        [position.x - HIT_SLOP, position.y - HIT_SLOP],
-        [position.x + HIT_SLOP, position.y + HIT_SLOP],
-      ],
-      { layers: POINT_LAYERS },
-    );
+  const onScreen = () => container.getClientRects().length > 0;
 
-  const membersOf = async (feature: Feature): Promise<string[]> => {
+  const seenFrom = (feature: Feature): Seen | null => {
     const props = feature.properties ?? {};
-    if (typeof props.cluster_id !== "number") return [String(props.id)];
-    const source = map.getSource("points");
-    if (!source) throw new Error("The points source is not ready");
-    const total = Number(props.point_count);
-    const leaves = await source.getClusterLeaves(props.cluster_id, total, 0);
-    return leaves.map((leaf) => String(leaf.properties?.id));
+    const isCluster = typeof props.cluster_id === "number";
+    const count = isCluster ? Number(props.point_count) : 1;
+    const rank = Number(isCluster ? props.best : props.rank);
+    const photoId = ranking.idAt[rank];
+    if (photoId === undefined) return null;
+    return {
+      key: `${count}:${photoId}`,
+      count,
+      photoId,
+      lngLat: feature.geometry.coordinates,
+      clusterId: isCluster ? (props.cluster_id as number) : null,
+      selected: isCluster ? Number(props.selected) === count : Number(props.sel) === 1,
+    };
   };
 
-  const open = async (feature: Feature) => {
+  const stack = (pin: Pin) => {
+    pin.element.style.zIndex = String(pin.selected ? 1_000_000 : pin.count);
+    pin.element.style.borderColor = pin.selected ? "var(--accent)" : "#fff";
+  };
+
+  const loadImage = (pin: Pin) => {
+    if (failedPhotos.has(pin.photoId)) return;
+    pin.image.style.display = "";
+    pin.image.src = thumbnailUrl(pin.photoId);
+  };
+
+  const place = (pin: Pin) => {
+    const at = map.project(pin.lngLat);
+    pin.element.style.transform = `translate(${at.x}px,${at.y}px)`;
+  };
+
+  let pressedAt: { x: number; y: number } | null = null;
+
+  const membersOf = async (pin: Pin): Promise<string[]> => {
+    if (pin.count === 1) return [pin.photoId];
+    const source = map.getSource("points");
+    if (!source) throw new Error("The points source is not ready");
+    // Cluster ids name positions in the index and are reused when the points
+    // change, so the pin is looked up again by what it stands for, and what
+    // the index answers is checked against it.
+    const candidates: number[] = [];
+    for (const feature of map.querySourceFeatures("points", { filter: ["has", "point_count"] })) {
+      const found = seenFrom(feature);
+      if (found?.key === pin.key && found.clusterId !== null && !candidates.includes(found.clusterId)) {
+        candidates.push(found.clusterId);
+      }
+    }
+    if (pin.clusterId !== null && !candidates.includes(pin.clusterId)) candidates.push(pin.clusterId);
+    for (const id of candidates) {
+      const leaves = await source.getClusterLeaves(id, pin.count, 0);
+      const ids = leaves.map((leaf) => String(leaf.properties?.id));
+      if (ids.length === pin.count && ids.includes(pin.photoId)) return ids;
+    }
+    throw new Error("The point changed before its photos were read");
+  };
+
+  const open = async (pin: Pin) => {
     try {
-      const ids = await membersOf(feature);
+      const ids = await membersOf(pin);
       if (destroyed) return;
       options.onPointClick(ids);
     } catch (error) {
       if (destroyed) return;
       options.onPointError(error instanceof Error ? error : new Error(String(error)), () => {
-        void open(feature);
+        void open(pin);
       });
     }
   };
 
-  const onClick = (event: { point: { x: number; y: number } }) => {
-    const features = pointFeaturesAt(event.point);
-    if (features.length > 0) void open(features[0]);
-  };
-  const onMouseMove = (event: { point: { x: number; y: number } }) => {
-    map.getCanvas().style.cursor = pointFeaturesAt(event.point).length > 0 ? "pointer" : "";
+  const addPin = (seen: Seen): Pin => {
+    const side = sideFor(seen.count);
+    const element = document.createElement("button");
+    element.type = "button";
+    element.setAttribute("aria-label", options.pinLabel(seen.count));
+    element.style.cssText =
+      `position:absolute;left:${-side / 2}px;top:${-side / 2}px;width:${side}px;height:${side}px;` +
+      "box-sizing:border-box;padding:0;margin:0;border:2.5px solid #fff;border-radius:12px;" +
+      "background:var(--sand);cursor:pointer;pointer-events:auto;will-change:transform;" +
+      "box-shadow:0 1px 3px rgba(33,25,34,0.25)";
+    const image = document.createElement("img");
+    image.alt = "";
+    image.draggable = false;
+    image.style.cssText = "position:absolute;inset:0;width:100%;height:100%;object-fit:cover;border-radius:9.5px";
+    const pin: Pin = { ...seen, side, element, image };
+    image.addEventListener("error", () => {
+      failedPhotos.add(pin.photoId);
+      image.style.display = "none";
+    });
+    element.addEventListener("pointerdown", (event) => {
+      pressedAt = { x: event.clientX, y: event.clientY };
+    });
+    element.addEventListener("click", (event) => {
+      const from = pressedAt;
+      pressedAt = null;
+      if (from && Math.hypot(event.clientX - from.x, event.clientY - from.y) > PRESS_SLOP) return;
+      void open(pin);
+    });
+    element.appendChild(image);
+    if (seen.count > 1) element.appendChild(createBadge(seen.count));
+    stack(pin);
+    loadImage(pin);
+    layer.appendChild(element);
+    return pin;
   };
 
-  const syncLabels = () => {
-    if (!map.getSource("points") || !map.isStyleLoaded()) return;
-    const seen = new Set<number>();
-    for (const feature of map.querySourceFeatures("points", { filter: ["has", "point_count"] })) {
-      const id = feature.properties?.cluster_id;
-      if (typeof id !== "number" || seen.has(id)) continue;
-      seen.add(id);
-      // A cluster id names a position in the index, so after the points
-      // change it can name another cluster; its position is read again as
-      // well, since tiles hold the same cluster at slightly different places.
-      const count = Number(feature.properties?.point_count);
-      const shown = labels.get(id);
-      if (shown?.count === count) {
-        shown.marker.setLngLat(feature.geometry.coordinates);
+  const removePin = (pin: Pin) => {
+    // An image that is still loading is abandoned by clearing its source.
+    pin.image.removeAttribute("src");
+    pin.element.remove();
+  };
+
+  const syncPins = () => {
+    if (dataPending || !loaded || !onScreen()) return;
+    const width = map.getCanvas().clientWidth;
+    const height = map.getCanvas().clientHeight;
+    const wanted = new Map<string, Seen>();
+    for (const feature of map.querySourceFeatures("points")) {
+      const seen = seenFrom(feature);
+      if (!seen || wanted.has(seen.key)) continue;
+      const at = map.project(seen.lngLat);
+      if (at.x < -PIN_MARGIN || at.y < -PIN_MARGIN || at.x > width + PIN_MARGIN || at.y > height + PIN_MARGIN) continue;
+      wanted.set(seen.key, seen);
+    }
+    for (const [key, pin] of pins) {
+      if (wanted.has(key)) continue;
+      removePin(pin);
+      pins.delete(key);
+    }
+    for (const [key, seen] of wanted) {
+      const kept = pins.get(key);
+      if (!kept) {
+        const pin = addPin(seen);
+        pins.set(key, pin);
+        place(pin);
         continue;
       }
-      shown?.marker.remove();
-      labels.set(id, {
-        count,
-        marker: new maplibre.Marker({ element: countLabel(count), anchor: "center" })
-          .setLngLat(feature.geometry.coordinates)
-          .addTo(map),
-      });
-    }
-    for (const [id, { marker }] of labels) {
-      if (seen.has(id)) continue;
-      marker.remove();
-      labels.delete(id);
+      kept.lngLat = seen.lngLat;
+      kept.clusterId = seen.clusterId;
+      if (kept.selected !== seen.selected) {
+        kept.selected = seen.selected;
+        stack(kept);
+      }
     }
   };
+
+  const placePins = () => {
+    for (const pin of pins.values()) place(pin);
+  };
+
+  const applyTheme = () => {
+    const theme = currentTheme();
+    if (!loaded || theme === appliedTheme || !onScreen()) return;
+    appliedTheme = theme;
+    for (const [id, property, value] of paintFor(theme)) map.setPaintProperty(id, property, value);
+  };
+  const themeWatcher = new MutationObserver(applyTheme);
+  themeWatcher.observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
 
   const reportTiles = (failing: boolean) => {
     if (failing === reportedFailing) return;
@@ -370,7 +502,8 @@ export async function createPhotoMap(
   // notice is up, the first such idle asks for the tiles in view once more,
   // and the idle after that one decides.
   const onIdle = () => {
-    syncLabels();
+    dataPending = false;
+    syncPins();
     if (tileFailed) {
       tileFailed = false;
       verifyingTiles = false;
@@ -387,30 +520,57 @@ export async function createPhotoMap(
   };
 
   const onError = (event: { sourceId?: string }) => {
-    if (event.sourceId === "tiles") tileFailed = true;
+    if (event.sourceId === TILE_SOURCE) tileFailed = true;
+  };
+
+  const onSourceData = (event: { sourceId?: string; isSourceLoaded?: boolean }) => {
+    if (event.sourceId !== "points" || !event.isSourceLoaded) return;
+    dataPending = false;
+    syncPins();
+  };
+
+  const onMove = () => {
+    if (moveTimer !== null) return;
+    moveTimer = setTimeout(() => {
+      moveTimer = null;
+      syncPins();
+    }, MOVE_SYNC_MS);
   };
 
   const onMoveEnd = () => {
+    syncPins();
     const center = map.getCenter();
     options.onViewChange([center.lng, center.lat], map.getZoom());
   };
 
-  map.on("click", onClick as never);
-  map.on("mousemove", onMouseMove as never);
+  map.on("load", () => {
+    loaded = true;
+    applyTheme();
+    syncPins();
+  });
   map.on("idle", onIdle);
-  map.on("render", syncLabels);
+  map.on("render", placePins);
+  map.on("move", onMove);
+  map.on("sourcedata", onSourceData as never);
   map.on("error", onError as never);
   map.on("moveend", onMoveEnd);
 
   const drawData = () => {
     const source = map.getSource("points");
-    if (source) source.setData(toCollection(currentPoints, selected));
-    else map.once("styledata", drawData);
+    if (!source) {
+      map.once("styledata", drawData);
+      return;
+    }
+    dataPending = true;
+    source.setData(toCollection(currentPoints, selected, ranking.rankOf));
   };
 
   return {
     setPoints(points) {
       currentPoints = points;
+      ranking = rankPoints(points);
+      failedPhotos.clear();
+      for (const pin of pins.values()) if (pin.image.style.display === "none") loadImage(pin);
       drawData();
     },
     setSelected(ids) {
@@ -419,10 +579,17 @@ export async function createPhotoMap(
       selected = next;
       drawData();
     },
+    resume() {
+      applyTheme();
+      syncPins();
+    },
     destroy() {
       destroyed = true;
-      for (const { marker } of labels.values()) marker.remove();
-      labels.clear();
+      themeWatcher.disconnect();
+      if (moveTimer !== null) clearTimeout(moveTimer);
+      for (const pin of pins.values()) removePin(pin);
+      pins.clear();
+      layer.remove();
       map.remove();
     },
   };

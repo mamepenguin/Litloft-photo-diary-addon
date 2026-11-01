@@ -42,6 +42,12 @@
       "restore": "Restore",
       "missing": "The file for this day's note cannot be found",
       "restoreFailed": "Could not restore"
+    },
+    "pin": {
+      "label": "{count, plural, one {# photo} other {# photos}}"
+    },
+    "strip": {
+      "showMonth": "Show month"
     }
   }
 }
