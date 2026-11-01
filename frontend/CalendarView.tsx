@@ -62,6 +62,8 @@ export function CalendarView({
   const [failures, setFailures] = useState<ReadonlySet<string>>(new Set());
   const [token, setToken] = useState(0);
   const refresh = useCallback(() => setToken((value) => value + 1), []);
+  const [calendarToken, setCalendarToken] = useState(0);
+  const refreshCalendar = useCallback(() => setCalendarToken((value) => value + 1), []);
 
   const report = useCallback((key: string, ok: boolean) => {
     setFailures((current) => {
@@ -101,7 +103,7 @@ export function CalendarView({
         else setMonthsFailed(true);
       },
     );
-  }, [drive, active, token, report, onNotAvailable, onTotal]);
+  }, [drive, active, token, calendarToken, report, onNotAvailable, onTotal]);
 
   useEffect(() => {
     if (!active || month === null || nothingDated) return;
@@ -124,7 +126,7 @@ export function CalendarView({
         else setDaysFailedFor(month);
       },
     );
-  }, [drive, active, month, nothingDated, token, report, onNotAvailable]);
+  }, [drive, active, month, nothingDated, token, calendarToken, report, onNotAvailable]);
 
   const undatedCount = months?.undated_count ?? 0;
   const listKind: "day" | "undated" | null =
@@ -165,7 +167,15 @@ export function CalendarView({
   const openDate = listKind === "day" ? url.date : null;
 
   const editorAvailable = useEditorAvailable(drive);
-  const note = useDayNote({ drive, date: openDate, active, token, refresh, onNotAvailable });
+  const note = useDayNote({
+    drive,
+    date: openDate,
+    active,
+    token,
+    refresh,
+    onStateChanged: refreshCalendar,
+    onNotAvailable,
+  });
 
   const [secondReadDue, setSecondReadDue] = useState(url.date !== null);
   useEffect(() => {

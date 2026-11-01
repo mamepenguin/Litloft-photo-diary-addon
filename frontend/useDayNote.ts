@@ -50,6 +50,8 @@ type Props = {
   /** Changes whenever the page asks for everything to be read again. */
   token: number;
   refresh: () => void;
+  /** A read found a state other than the one drawn, so what the calendar marks may be stale. */
+  onStateChanged: () => void;
   onNotAvailable: () => void;
 };
 
@@ -60,7 +62,7 @@ type Props = {
  * scope it began in and changes nothing once the viewer has left it, which is
  * also what keeps a day's old data from reappearing when the viewer returns.
  */
-export function useDayNote({ drive, date, active, token, refresh, onNotAvailable }: Props): DayNote {
+export function useDayNote({ drive, date, active, token, refresh, onStateChanged, onNotAvailable }: Props): DayNote {
   const router = useRouter();
   const id = date === null ? null : `${drive}\n${date}`;
   const visit = useRef({ id, scope: { date } as Scope });
@@ -119,6 +121,7 @@ export function useDayNote({ drive, date, active, token, refresh, onNotAvailable
       const before = modelOf(model, s);
       const changed =
         before.info === null || before.info.state !== info.state || before.info.file_id !== info.file_id;
+      if (before.info !== null && before.info.state !== info.state) onStateChanged();
       commit(s, {
         info,
         ...(changed ? { text: null, message: null, failure: null } : {}),
@@ -126,7 +129,7 @@ export function useDayNote({ drive, date, active, token, refresh, onNotAvailable
         settled: before.settled || info.state !== "active",
       });
     },
-    [commit],
+    [commit, onStateChanged],
   );
 
   const showText = useCallback(
@@ -166,9 +169,9 @@ export function useDayNote({ drive, date, active, token, refresh, onNotAvailable
   );
 
   const read = useCallback(
-    async (s: Scope) => {
+    async (s: Scope, recheck = true) => {
       const info = await readNote(s);
-      if (info !== null) await settle(s, info, true);
+      if (info !== null) await settle(s, info, recheck);
     },
     [readNote, settle],
   );
@@ -273,7 +276,7 @@ export function useDayNote({ drive, date, active, token, refresh, onNotAvailable
       const result = await loadText(s, info.file_id);
       if (result !== null) showText(s, result);
     } else {
-      await read(s);
+      await read(s, false);
     }
   }, [loadText, read, showText]);
 

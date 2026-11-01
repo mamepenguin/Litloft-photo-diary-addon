@@ -1169,6 +1169,44 @@ describe("SPEC-PD-006 failure cases: the stream", () => {
     expect(editLink()?.getAttribute("href")).toBe("/files/n1?edit=1");
   });
 
+  it.each([404, 410])("Retry after %i with the stream still answering it reads /note and the stream once each", async (status) => {
+    active("2026-10-03", "本文メモ", "n1");
+    failWith(isStream("n1"), status, false);
+    await open(OCT3);
+    await click(await button("再試行"));
+    await sleep(100);
+    expect(await button("再試行")).toBeInTheDocument();
+    expect(noteReads("2026-10-03")).toBe(3);
+    expect(streamReads("n1")).toBe(2);
+    expect(editLink()).toBeNull();
+  });
+
+  it("Retry that finds the row missing shows it in the panel and drops the mark from the grid", async () => {
+    active("2026-10-03", "本文メモ", "n1");
+    failWith(isStream("n1"), 404, false);
+    await open(OCT3);
+    await button("再試行");
+    await button("10月3日、5枚、メモあり");
+    missing("2026-10-03", "n1");
+    await click(await button("再試行"));
+    expect(await screen.findByText(MISSING)).toBeInTheDocument();
+    expect(await button("10月3日 5枚")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /10月3日、5枚、メモあり/ })).toBeNull();
+  });
+
+  it("Retry that finds the same state does not read the calendar again", async () => {
+    active("2026-10-03", "本文メモ", "n1");
+    failWith(isStream("n1"), 404, false);
+    await open(OCT3);
+    await click(await button("再試行"));
+    await sleep(100);
+    const calendar = () => requests.filter((r) => r.path.startsWith(`${BASE}/calendar/`)).length;
+    const before = calendar();
+    await click(await button("再試行"));
+    await sleep(100);
+    expect(calendar()).toBe(before);
+  });
+
   it.each([
     ["trashed", () => trashed("2026-10-03", "本文メモ", "n1"), TRASHED],
     ["missing", () => missing("2026-10-03", "n1"), MISSING],
