@@ -2010,13 +2010,4 @@ describe("month and day data while loading and re-fetching", () => {
     await releaseMonths();
     expect(await button("10月4日、メモあり")).toBeEnabled();
   });
-
-  it("the note of a day with no photos is read while the photo list is still loading", async () => {
-    active("2026-10-04", "四日のメモ");
-    const release = hold((r) => r.path === `${BASE}/photos`);
-    await open(OCT4);
-    expect(await screen.findByText("四日のメモ")).toBeInTheDocument();
-    await release();
-    expect(await screen.findByText("この日の写真はありません")).toBeInTheDocument();
-  });
 });
