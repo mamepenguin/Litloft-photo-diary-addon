@@ -386,6 +386,7 @@ test.describe("SPEC-PD-008: the hover preview", () => {
     });
     await expect(page.getByTestId("tile").first()).toBeVisible();
     await expect.poll(() => position(page)).toBe("sticky");
+    await page.evaluate(() => window.scrollTo(0, 600));
     await page.waitForTimeout(1200);
     await day(page, 28).hover();
     const img = page.locator("img[src*='on2026-09-28/thumbnail']");
