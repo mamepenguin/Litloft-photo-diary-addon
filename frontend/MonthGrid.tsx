@@ -16,7 +16,7 @@ type Props = {
 };
 
 const CELL =
-  "relative flex min-h-12 flex-col items-center justify-center gap-0.5 rounded-xl border-2 px-1 py-1.5 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring";
+  "flex h-12 flex-col items-stretch justify-between rounded-xl border-2 px-1.5 py-0.5 text-left transition-colors group-data-[wide=true]/diary:h-[76px] group-data-[wide=true]/diary:py-1.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring";
 const SURFACE = {
   photos: "bg-sand text-text-primary hover:bg-sand-hover",
   note: "bg-bg-elevated text-text-primary hover:bg-sand",
@@ -40,7 +40,10 @@ export function MonthGrid({ month, days, openDate, loading, onPick }: Props) {
         const date = `${month}-${String(day).padStart(2, "0")}`;
         if (loading) {
           return (
-            <div key={date} className="flex min-h-12 items-start justify-center pt-2 text-sm text-text-muted">
+            <div
+              key={date}
+              className="flex h-12 items-start justify-center pt-2 text-sm text-text-muted group-data-[wide=true]/diary:h-[76px]"
+            >
               {day}
             </div>
           );
@@ -67,10 +70,16 @@ export function MonthGrid({ month, days, openDate, loading, onPick }: Props) {
               open ? "border-accent" : "border-transparent"
             }`}
           >
-            {hasNote && (
-              <Pen size={12} aria-hidden="true" className="absolute right-1.5 top-1.5 text-text-muted" />
-            )}
-            <span className="text-sm font-semibold">{day}</span>
+            <span className="flex items-center justify-between gap-1">
+              <span className="text-sm font-semibold">{day}</span>
+              {hasNote && (
+                <Pen
+                  size={12}
+                  aria-hidden="true"
+                  className="shrink-0 text-text-primary group-data-[wide=true]/diary:size-3.5"
+                />
+              )}
+            </span>
             {count > 0 && <span className="text-xs text-text-muted">{count}</span>}
           </button>
         );

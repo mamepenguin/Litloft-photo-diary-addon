@@ -142,3 +142,48 @@ test("I7: a note saved just as Back is pressed appears at the second read, witho
   expect(counts.note).toBe(reads + 1);
   expect(await page.evaluate(() => (window as unknown as { __sameDocument?: boolean }).__sameDocument)).toBe(true);
 });
+
+for (const [name, size] of SIZES) {
+  test(`a two-digit day's number and its pen do not overlap on ${name}`, async ({ page }) => {
+    await page.setViewportSize(size);
+    await open(page, "?month=2026-09", { current: "none", delay: 0 });
+    await page.route("**/api/addons/photo_diary/calendar/days*", (route) =>
+      route.fulfill(
+        json({
+          days: [
+            { date: BIG_DAY, count: 120, has_note: true },
+            { date: "2026-09-22", count: 0, has_note: true },
+          ],
+        }),
+      ),
+    );
+    await page.reload();
+    for (const [label, day] of [
+      ["September 10", "10"],
+      ["September 22", "22"],
+    ]) {
+      const cell = page.getByRole("button", { name: new RegExp(`${label}.*has a note`) });
+      await expect(cell).toBeVisible();
+      const number = (await cell.getByText(day, { exact: true }).boundingBox())!;
+      const pen = (await cell.locator("svg").boundingBox())!;
+      const box = (await cell.boundingBox())!;
+      expect(pen.x).toBeGreaterThanOrEqual(number.x + number.width);
+      expect(Math.abs(pen.y + pen.height / 2 - (number.y + number.height / 2))).toBeLessThanOrEqual(2);
+      expect(pen.x + pen.width).toBeLessThanOrEqual(box.x + box.width);
+      expect(box.height).toBe(name === "desktop" ? 76 : 48);
+    }
+  });
+}
+
+test("the month title is one line with the undated button present at 1280", async ({ page }) => {
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await open(page, "?month=2026-09", { current: "none", delay: 0 });
+  await expect(page.getByRole("button", { name: /^No capture date/ })).toBeVisible();
+  const title = page.getByRole("heading", { level: 2 }).filter({ hasText: /2026/ }).first();
+  await expect(title).toBeVisible();
+  const { height, line } = await title.evaluate((el) => ({
+    height: el.getBoundingClientRect().height,
+    line: parseFloat(getComputedStyle(el).lineHeight),
+  }));
+  expect(height).toBeLessThanOrEqual(line + 1);
+});
