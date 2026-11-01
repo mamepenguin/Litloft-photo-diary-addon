@@ -76,3 +76,38 @@ evidence: Stack from the core worktree at 6f6c0b27f (backend, frontend, knowledg
   Not run: Back in the Litloft app. Write opened the editor in the app and the note saved there (115-, 117-), but three edge swipes from idb did not go back, and the app has no other Back. Back was run in Simulator Safari with its toolbar button instead, 0.6 s after typing: note and mark shown (133-).
   Not run: /note answering 404 while open, a locked drive, the map and undated list having no note area, a map section link to a day with a note, view=map&date with no note request, next from a month in no list, a save slower than 3 s.
 pending: iOS on a real device. Back by the app's swipe gesture in the iOS app, which idb could not produce in the simulator.
+
+## R-5, second run
+
+ran_in_app: yes
+at: ff810475681dfebf290dbee8ce6a60c2a2a85b71
+by: agent
+evidence: Narrow run over frontend/MonthGrid.tsx, CalendarView.tsx, NoteArea.tsx, LoadError.tsx, useDayNote.ts. Stack rebuilt from the core worktree at 6f6c0b27f (backend, frontend, knowledge; intelligence not started). Chromium driven by Playwright against localhost:3000 at 1920, 1440, 1280, 1024 and 390 wide, light and dark, en and ja. Fixture on drive テスト画像: 120 generated photos dated 2013-03-15 (with GPS) and 2013-03-16, notes through the core's API and the editor; all purged afterwards (142 rows, file count back to 1374, 660 EXIF rows, folders gone). Design compared with the artifact's Main and States files. Screenshots are under /private/tmp/claude-502/-Users-libre-Sources-video-share/ea9da1a7-ad58-471d-b545-cdf62e45c164/scratchpad/r5b/shots/ (session scratchpad, not kept).
+
+  As specified or as designed:
+  - Pen and two-digit day: no overlap on days 2, 8, 15, 22, 23 in both themes. Gap at least 6.6 px at desktop widths (pen 14 px, cell 76 px high), 4 px at 390 (pen 12 px, cell 48 px high). Pen in the text colour, number top left, pen same row at right. Note-only day is --bg-elevated with no count (l-*).
+  - Month title on one line beside the undated button at 1920, 1440, 1280 and 1024, for March and September, en and ja; no overlap with the button (l-*, f-bar-1024-sep).
+  - Edit inside the note surface, lower right (16 px in from both edges), transparent background, text colour, both themes and all widths (l-*-noted).
+  - Load error: --bg-elevated row, radius 12 px, alert icon and text in --danger, Retry, first read and re-read (m-*-loaderr, m-*-rereaderr).
+  - Rescan, could-not-start and could-not-restore rows below the control, --bg-elevated; rescan muted, the other two --danger, icon the same colour. Light #62625b and #9e0a0a, dark #c4a0a4 and #ff8a8a (m-*).
+  - Trashed row: bin icon and muted text, Restore in the row (l-*-trashed).
+  - Write, type, Back 0 ms, 500 ms and 1.8 s after the last key: mark and text by 300 ms, unchanged at 4.5 s, one POST (f-writeback-*).
+  - Scroll restore: scrollY 900 before a photo and 900 after Back, at +300 ms and past the second read, at 1280 and 390. Pressing the next day, also with 60 photos: scrollY stays 0 for 6 s, with its own note and heading. Same with the stream delayed 1.5 s and the day pressed before the note settled (f-scroll-*).
+  - Trash in a second tab (the core's route, called from that tab), then press the day from a grid still showing the mark, with a panel open on another day and with none: by 100 ms the panel shows trashed and the mark and label are gone. One /note, one months and one days read, nothing further in 4 s. Restore in the second tab, press the day: mark and text back. Restore in the panel: mark and text back (f-trash-a).
+  - Write with the POST delayed 1.5 s, then leave by the sidebar, browser Back, another day or Close: stays where the viewer went. The other day shows its own Write. With no leaving, the editor opens (f-leave-*).
+  - Re-checks of differences 2 and 3 of the first run: Retry after a stream 404 sends /note and the stream once each, nothing repeats. Stream 404, scan, Retry: panel missing, and mark and label gone at once, with one calendar read (f-stream404, f-missing-after-retry).
+  - view=map&date=2013-03-15: no /note and no stream request in 6 s, no note area. Calendar tab then reads /note and the stream once.
+  - Undated list: no note request, no note area, Write or Edit (f-undated).
+  - Map point: list with a section heading, no note area, no note request. Section link to 2013-03-15: month and date in the URL, panel with the note, Edit and the mark; Back returns to the map with no note area (f-map-list, f-map-link-day, f-map-back).
+  - No horizontal overflow at any of these widths.
+
+  Differences from the spec or the design:
+  1. Press Write with the POST delayed, then the Map tab: on the response the page goes to the editor, leaving the map (/drive/テスト画像/Photo Diary?file=...&edit=1). The date stays in the URL on the map, so the panel's day is not left, and the response navigates (f-leave-map-tab).
+  2. Re-read failure over a drawn note still moves the photos: first photo 499 to 567 at 1280, 1009 to 1089 at 390. The spec's failure row says the photos below do not move. Difference 1 of the first run (m-*-rereaderr).
+  3. Month bar in en at every wide width: with the undated button present, Today drops to a second row under the previous button. For a long month the next button drops too: September gives previous, title, picker on the first row and next, Today on the second. The artifact has previous, title, next, Today in one row, the undated button at its right. In ja the bar is one row (f-bar-1024-sep, l-light-1280-noted).
+  4. Rescan row at 390: the icon sits alone on the first line and the text wraps below it; row 92 px high. The artifact's message text is flex 1 1 180px with min-width 0, beside its icon. The load-error and trashed rows have this and keep the icon beside the text (m-*-phone-rescan).
+  5. A day's count in the grid is a bare number ("60"). The artifact has the unit ("27枚"). Not listed by the first run.
+
+  Not run: Back in the Litloft app and anything on iOS; the changed paths were run in Chromium only. /note answering 404 while open, a locked drive, next from a month in no list, a save slower than 3 s.
+  The run's own: while the stack was up a sqlite3 read from the host made the backend answer "disk I/O error" on data.db until it was restarted. quick_check was ok. Not the app's behaviour; those requests are not counted above.
+pending: iOS on a real device. Back by the app's swipe gesture in the iOS app, which idb could not produce in the simulator.
