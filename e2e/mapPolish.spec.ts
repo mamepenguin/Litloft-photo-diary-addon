@@ -280,6 +280,51 @@ test.describe("SPEC-PD-011: a pin is a photo with a count badge", () => {
     await expect.poll(() => h.clicks.length).toBe(1);
   });
 
+  test("I9: a click that follows a press which moved is not a press on the pin", async ({ page }) => {
+    const h = await prepare(page);
+    await dated(page, h, same("a", 3, 35.6812, 139.7671), 12);
+    const pin = pinsOf(page).first();
+    const box = (await pin.boundingBox())!;
+    const x = box.x + box.width / 2;
+    const y = box.y + box.height / 2;
+    // What a browser delivers to a button after a drag that ended on it.
+    await pin.dispatchEvent("pointerdown", { clientX: x, clientY: y });
+    await pin.dispatchEvent("click", { clientX: x + 40, clientY: y + 10 });
+    await page.waitForTimeout(300);
+    expect(h.clicks).toEqual([]);
+    await pin.dispatchEvent("pointerdown", { clientX: x, clientY: y });
+    await pin.dispatchEvent("click", { clientX: x + 2, clientY: y });
+    await expect.poll(() => h.clicks.length).toBe(1);
+  });
+
+  test("I10: only pins inside the view plus one pin's width exist, though more points are in the loaded tiles", async ({ page }) => {
+    const h = await prepare(page);
+    await page.goto(FIXTURE_PATH);
+    // 0.0005 degrees is about 93 px at zoom 17: a grid far wider than the view.
+    const points: Point[] = Array.from({ length: 1600 }, (_, i) => ({
+      file_id: `g${i}`,
+      lat: 35.6812 + (Math.floor(i / 40) - 20) * 0.0005,
+      lon: 139.7671 + ((i % 40) - 20) * 0.0005,
+      taken_at: "2026-01-01T00:00:00",
+    }));
+    await createMap(page, { points, center: A, zoom: 17 });
+    await settle(page, h);
+    await expect.poll(() => pinsOf(page).count()).toBeGreaterThan(20);
+    const box = (await page.locator("#map").boundingBox())!;
+    const boxes = await pinsOf(page).evaluateAll((all) => all.map((el) => {
+      const r = el.getBoundingClientRect();
+      return { x: r.x + r.width / 2, y: r.y + r.height / 2 };
+    }));
+    expect(boxes.length).toBeLessThan(140);
+    for (const b of boxes) {
+      expect(b.x).toBeGreaterThan(box.x - 70);
+      expect(b.x).toBeLessThan(box.x + box.width + 70);
+      expect(b.y).toBeGreaterThan(box.y - 70);
+      expect(b.y).toBeLessThan(box.y + box.height + 70);
+    }
+    expect(h.thumbnailRequests().length).toBeLessThanOrEqual(boxes.length * 2);
+  });
+
   test.describe("with a touch screen", () => {
     test.use({ hasTouch: true });
     test("I9: a drag that starts on a pin moves the map and opens no list, and a tap opens it", async ({ page }) => {
