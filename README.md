@@ -2,10 +2,22 @@
 
 An addon for [Litloft](https://github.com/mamepenguin/Litloft) that shows the photos of the current drive in two ways: on a month calendar and on a map.
 
-- **Calendar.** Days with photos show their count. Pressing a day lists its photos. Photos without a capture date are listed under "No capture date".
+- **Calendar.** Days with photos show their count. Pressing a day lists its photos. Photos without a capture date are listed under "No capture date". Every day can be pressed, and a **Today** control goes to the current date.
+- **Notes.** A day can have one short Markdown note, shown above its photos in the day's panel and marked in the calendar. See [Daily notes](#daily-notes).
 - **Map.** Photos with a GPS position are drawn as points that merge and split as you zoom. Clicking a point lists the photos it stands for, one section per capture date. A section heading links to that day in the calendar.
 
-Everything is built from the capture date and GPS position the core already stores for each image. The addon owns no table and writes nothing to the core. It is drive-scoped: it reads one drive at a time, and only drives the viewer may open and whose addon policy allows it.
+Photos are placed by the capture date and GPS position the core already stores for each image. The addon owns no table, and its backend writes nothing. Notes are created and restored by the page through the core's public API. It is drive-scoped: it reads one drive at a time, and only drives the viewer may open and whose addon policy allows it.
+
+## Daily notes
+
+A note is an ordinary Markdown file in the core, stored at `Photo Diary/YYYY-MM-DD.md` at the root of the drive. The date comes only from the file name, and only that exact path counts: the same name in another folder or a subfolder, `2026-11-01 (1).md`, `.txt`, `.MD`, or a date that does not exist, is not a note.
+
+- **Writing.** In a day's panel, **Write a note** creates the empty file (and the `Photo Diary` folder, if it is absent) and opens the core's editor, which needs the knowledge addon installed with its `editor` policy on for the drive. Without it the panel offers no way to write, and existing notes are still shown. A file is created only when the button is pressed, so drives where nobody writes are not touched.
+- **Marks.** A day has a mark once its note has text. A started note nobody wrote in (0 bytes) has none, and the panel offers to write in it. A note moved to the trash says so and offers **Restore**.
+- **Renaming or moving a note** in the core, including through the title in the editor, makes it stop being one: the date goes back to having no note.
+- **A file put at a note path outside the app** appears after the drive is scanned. If one already sits there when **Write a note** is pressed, the panel asks for a rescan and overwrites nothing.
+- **Frontmatter and wiki links.** Frontmatter is not shown in the panel, and a wiki link is plain text there. Both work in the editor.
+- A note is a file like any other: it shows in the folder tree, search and tags, and is handled by the intelligence addon and cloud sync under the drive's own policies.
 
 ## Install
 
@@ -51,7 +63,7 @@ The default server is a volunteer service with a usage policy that requires attr
 ## Limits
 
 - HEIC photos need a core at `370bb4a` or later to have a capture date and place. Photos already in the library fill in on the next scan.
-- The calendar and the map are built per request, with no cache. They are sized for up to 50,000 photos on a drive.
+- The calendar and the map are built per request, with no cache. They are sized for up to 50,000 photos and some thousands of notes on a drive.
 - The date shown is the one the camera's clock wrote, with no time zone conversion.
 - A drive is a security boundary, so photos from different drives are never merged.
 
