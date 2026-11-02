@@ -31,10 +31,10 @@ test.describe("I7: a point lists every photo it stands for and no other", () => 
   test("SPEC-PD-002 I7: two photos 7 m apart are two points at zoom 19", async ({ page }) => {
     const h = await prepare(page);
     await page.goto(FIXTURE_PATH);
-    // 0.0000629 degrees of latitude is about 58 px at zoom 19, beyond the cluster
-    // radius, and 29 px at zoom 18, within it.
+    // 0.0000759 degrees of latitude is about 70 px at zoom 19, beyond the cluster
+    // radius, and 35 px at zoom 18, within it.
     await createMap(page, {
-      points: [...same("up", 1, 35.6812, 139.7671), ...same("down", 1, 35.6812 - 0.0000629, 139.7671)],
+      points: [...same("up", 1, 35.6812, 139.7671), ...same("down", 1, 35.6812 - 0.0000759, 139.7671)],
       center: A,
       zoom: 19,
     });
@@ -129,7 +129,7 @@ test.describe("I10: tile requests", () => {
       const m = TILE_PATTERN.exec(url);
       expect(m, url).not.toBeNull();
       const [z, x, y] = [Number(m![1]), Number(m![2]), Number(m![3])];
-      expect(z).toBeLessThanOrEqual(19);
+      expect(z).toBeLessThanOrEqual(14);
       expect(x).toBeLessThan(2 ** z);
       expect(y).toBeLessThan(2 ** z);
     }
@@ -144,7 +144,9 @@ test.describe("I10: tile requests", () => {
       zoom: 12,
     });
     await settle(page, h);
-    for (const { url } of h.requests) {
+    // A thumbnail is asked of the page's own origin by id; no other host is.
+    const own = new URL(page.url()).hostname;
+    for (const { url } of h.requests.filter((r) => new URL(r.url).hostname !== own)) {
       expect(url).not.toContain("SECRET-PHOTO-ID-123");
       expect(url).not.toContain("35.681236");
       expect(url).not.toContain("139.767125");

@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { FIXTURE_PATH, PNG, TILE_HOST, clickCentre, createMap, prepare, same, settle, zoomInAtCentre } from "./support";
+import { FIXTURE_PATH, MVT_TYPE, TILE_HOST, VECTOR_TILE, clickCentre, createMap, prepare, same, settle, zoomInAtCentre } from "./support";
 
 const A: [number, number] = [139.7671, 35.6812];
 
@@ -7,7 +7,7 @@ test("SPEC-PD-001: the notice stays while tiles keep failing, and points still a
   const h = await prepare(page);
   let failing = true;
   await page.route(`https://${TILE_HOST}/**`, (route) =>
-    failing ? route.fulfill({ status: 503 }) : route.fulfill({ status: 200, contentType: "image/png", body: PNG }),
+    failing ? route.fulfill({ status: 503 }) : route.fulfill({ status: 200, contentType: MVT_TYPE, body: VECTOR_TILE }),
   );
   await page.goto(FIXTURE_PATH);
   await createMap(page, { points: same("a", 3, 35.6812, 139.7671), center: A, zoom: 12 });
@@ -33,7 +33,7 @@ test("SPEC-PD-001: the notice goes once a tile in view loads after the others fa
   const h = await prepare(page);
   let failing = true;
   await page.route(`https://${TILE_HOST}/**`, (route) =>
-    failing ? route.fulfill({ status: 503 }) : route.fulfill({ status: 200, contentType: "image/png", body: PNG }),
+    failing ? route.fulfill({ status: 503 }) : route.fulfill({ status: 200, contentType: MVT_TYPE, body: VECTOR_TILE }),
   );
   await page.goto(FIXTURE_PATH);
   await createMap(page, { points: same("a", 3, 35.6812, 139.7671), center: A, zoom: 12 });

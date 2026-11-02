@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { formatListDate, formatMonth, monthGrid, weekdayLabels } from "./dates";
+import { formatListDate, formatMonth, monthGrid, weekOf, weekdayLabels } from "./dates";
 
 const ORIGINAL_TZ = process.env.TZ;
 afterEach(() => {
@@ -107,6 +107,31 @@ describe("weekdayLabels", () => {
     for (const zone of ZONES) {
       process.env.TZ = zone;
       expect(weekdayLabels(locale)).toEqual(expected);
+    }
+  });
+});
+
+describe("weekOf", () => {
+  // SPEC-PD-009 item 1: the strip shows the seven days of the open day's week, Sunday first.
+  const cases: [string, string, string][] = [
+    ["2026-10-04", "2026-10-04", "2026-10-10"], // a Sunday starts its own week
+    ["2026-10-10", "2026-10-04", "2026-10-10"], // a Saturday ends it
+    ["2026-10-07", "2026-10-04", "2026-10-10"],
+    ["2026-11-01", "2026-11-01", "2026-11-07"], // Sunday the 1st
+    ["2026-10-01", "2026-09-27", "2026-10-03"], // reaches back into the month before
+    ["2026-12-31", "2026-12-27", "2027-01-02"], // reaches into the next year
+    ["2024-03-01", "2024-02-25", "2024-03-02"], // across a leap February
+    ["2000-01-01", "1999-12-26", "2000-01-01"],
+  ];
+
+  it.each(cases)("SPEC-PD-009: %s is in %s to %s", (date, first, last) => {
+    for (const zone of ZONES) {
+      process.env.TZ = zone;
+      const week = weekOf(date);
+      expect(week).toHaveLength(7);
+      expect(week[0]).toBe(first);
+      expect(week[6]).toBe(last);
+      expect(week).toContain(date);
     }
   });
 });

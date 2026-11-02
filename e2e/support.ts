@@ -3,8 +3,8 @@ import fs from "node:fs";
 import path from "node:path";
 
 export const TILE_HOST = "tiles.example.test";
-export const TILE_URL = `https://${TILE_HOST}/v1/{z}/{x}/{y}.png`;
-export const TILE_PATTERN = new RegExp(`^https://${TILE_HOST.replace(/\./g, "\\.")}/v1/(\\d+)/(\\d+)/(\\d+)\\.png$`);
+export const TILE_URL = `https://${TILE_HOST}/v1/{z}/{x}/{y}.mvt`;
+export const TILE_PATTERN = new RegExp(`^https://${TILE_HOST.replace(/\./g, "\\.")}/v1/(\\d+)/(\\d+)/(\\d+)\\.mvt$`);
 export const FIXTURE_PATH = "/index.html?drive=family&date=2026-10-03&undated=true";
 
 const ASSETS = path.join(__dirname, "../backend/assets");
@@ -13,11 +13,91 @@ const PNG_1X1 = Buffer.from(
   "base64",
 );
 const TYPES: Record<string, string> = {
+  ".pbf": "application/x-protobuf",
   ".js": "text/javascript",
   ".mjs": "text/javascript",
   ".css": "text/css",
   ".map": "application/json",
 };
+
+// A vector tile written by hand: Mapbox Vector Tile 2.1 is protobuf, and the
+// few messages used here are small enough to encode without a library.
+const varint = (value: number): number[] => {
+  const out: number[] = [];
+  let rest = value;
+  while (rest > 0x7f) {
+    out.push((rest & 0x7f) | 0x80);
+    rest = Math.floor(rest / 128);
+  }
+  out.push(rest);
+  return out;
+};
+const field = (number: number, wire: number) => varint((number << 3) | wire);
+const bytes = (number: number, body: number[]) => [...field(number, 2), ...varint(body.length), ...body];
+const packed = (number: number, values: number[]) => bytes(number, values.flatMap(varint));
+const text = (number: number, value: string) => bytes(number, [...Buffer.from(value)]);
+const zigzag = (value: number) => (value << 1) ^ (value >> 31);
+
+const EXTENT = 4096;
+const rectangle = (x: number, y: number, w: number, h: number): number[] => [
+  9, zigzag(x), zigzag(y),
+  26, zigzag(w), zigzag(0), zigzag(0), zigzag(h), zigzag(-w), zigzag(0),
+  15,
+];
+
+function layer(name: string, kind: string | null, geometry: number[]): number[] {
+  const feature = [
+    ...(kind === null ? [] : packed(2, [0, 0])),
+    ...field(3, 0), ...varint(3),
+    ...packed(4, geometry),
+  ];
+  return bytes(3, [
+    ...text(1, name),
+    ...bytes(2, feature),
+    ...(kind === null ? [] : [...text(3, "kind"), ...bytes(4, text(1, kind))]),
+    ...field(5, 0), ...varint(EXTENT),
+    ...field(15, 0), ...varint(2),
+  ]);
+}
+
+const point = (x: number, y: number): number[] => [9, zigzag(x), zigzag(y)];
+const line = (x1: number, y1: number, x2: number, y2: number): number[] => [
+  9, zigzag(x1), zigzag(y1), 10, zigzag(x2 - x1), zigzag(y2 - y1),
+];
+
+/** A layer of features that share its keys and values; each feature names the indices of its own. */
+function features(name: string, keys: string[], values: string[], list: { type: number; tags: number[]; geometry: number[] }[]): number[] {
+  return bytes(3, [
+    ...text(1, name),
+    ...list.flatMap(({ type, tags, geometry }) =>
+      bytes(2, [...packed(2, tags), ...field(3, 0), ...varint(type), ...packed(4, geometry)]),
+    ),
+    ...keys.flatMap((key) => text(3, key)),
+    ...values.flatMap((value) => bytes(4, text(1, value))),
+    ...field(5, 0), ...varint(EXTENT),
+    ...field(15, 0), ...varint(2),
+  ]);
+}
+
+/**
+ * The same tile for every address: the left half is a park, the top right
+ * corner is water, the rest is land. A street, a city name in Latin letters
+ * and one in Han characters sit on it, and a layer of buildings that the style
+ * does not draw. So the base shows the palette's surfaces wherever the map looks.
+ */
+export const VECTOR_TILE = Buffer.from([
+  ...layer("land", "park", rectangle(0, 0, EXTENT / 2, EXTENT)),
+  ...layer("water_polygons", "water", rectangle(EXTENT / 2, 0, EXTENT / 2, EXTENT / 4)),
+  ...features("streets", ["kind"], ["primary"], [{ type: 2, tags: [0, 0], geometry: line(0, EXTENT / 2, EXTENT, EXTENT / 2) }]),
+  ...features("place_labels", ["kind", "name"], ["city", "Testville", "東京"], [
+    { type: 1, tags: [0, 0, 1, 1], geometry: point(EXTENT / 4, EXTENT / 4) },
+    { type: 1, tags: [0, 0, 1, 2], geometry: point(EXTENT / 2, (EXTENT * 3) / 4) },
+  ]),
+  ...layer("buildings", null, rectangle(EXTENT / 8, EXTENT / 8, 200, 200)),
+]);
+export const MVT_TYPE = "application/vnd.mapbox-vector-tile";
+
+export const pinLabel = (count: number) => (count === 1 ? "1 photo" : `${count} photos`);
 
 export type Point = { file_id: string; lat: number; lon: number; taken_at: string | null };
 
@@ -25,6 +105,7 @@ export type Harness = {
   requests: { url: string; headers: Record<string, string> }[];
   tileRequests: () => { url: string; headers: Record<string, string> }[];
   assetRequests: () => string[];
+  thumbnailRequests: () => string[];
   clicks: string[][];
   views: { center: [number, number]; zoom: number }[];
   tileFailures: boolean[];
@@ -40,6 +121,7 @@ export async function prepare(page: Page): Promise<Harness> {
     requests: [],
     tileRequests: () => h.requests.filter((r) => new URL(r.url).hostname === TILE_HOST),
     assetRequests: () => h.requests.map((r) => r.url).filter((u) => u.includes("/api/addons/photo_diary/assets/")),
+    thumbnailRequests: () => h.requests.map((r) => r.url).filter((u) => /\/api\/files\/[^/]+\/thumbnail/.test(u)),
     clicks: [],
     views: [],
     tileFailures: [],
@@ -71,6 +153,9 @@ export async function prepare(page: Page): Promise<Harness> {
     });
   });
   await page.route(`https://${TILE_HOST}/**`, (route) =>
+    route.fulfill({ status: 200, contentType: MVT_TYPE, body: VECTOR_TILE }),
+  );
+  await page.route("**/api/files/*/thumbnail", (route) =>
     route.fulfill({ status: 200, contentType: "image/png", body: PNG_1X1 }),
   );
 
@@ -100,6 +185,7 @@ export async function createMap(
       center: o.center,
       zoom: o.zoom,
       selected: o.selected,
+      pinLabel: (count: number) => (count === 1 ? "1 photo" : `${count} photos`),
       onPointClick: (ids: string[]) => w.__onPointClick(ids),
       onPointError: () => {},
       onTileFailureChange: (value: boolean) => w.__onTileFailure(value),
@@ -128,9 +214,12 @@ export const same = (id: string, n: number, lat: number, lon: number): Point[] =
     taken_at: "2026-10-03T10:00:00",
   }));
 
-/** The text of each count label on the map, sorted. */
+/** The pins on the map: each is a button holding its thumbnail. */
+export const pinsOf = (page: Page) => page.locator("#map button:has(img)");
+
+/** The count badge of each pin that has one, sorted. */
 export const labelTexts = (page: Page) =>
-  page.locator("#map .maplibregl-marker").allTextContents().then((texts) => texts.sort());
+  pinsOf(page).allTextContents().then((texts) => texts.filter(Boolean).sort());
 
 export const PNG = PNG_1X1;
 
@@ -173,3 +262,63 @@ export async function accentPixels(
   }, png.toString("base64"));
 }
 
+
+/** Computed colour of a CSS colour or variable, as the browser resolves it. */
+export const resolveColour = (page: Page, value: string) =>
+  page.evaluate((v) => {
+    const probe = document.createElement("div");
+    probe.style.color = v;
+    document.body.appendChild(probe);
+    const colour = getComputedStyle(probe).color;
+    probe.remove();
+    return colour;
+  }, value);
+
+/** How many pins inside `root` have the accent colour for a border. */
+export async function accentBorders(page: Page, root = "#map"): Promise<number> {
+  const accent = await resolveColour(page, "var(--accent)");
+  return page.locator(`${root} button:has(img)`).evaluateAll(
+    (pins, colour) => pins.filter((pin) => getComputedStyle(pin).borderTopColor === colour).length,
+    accent,
+  );
+}
+
+/** How many pixels of `target`, as the screen shows them, are within `tolerance` of each `#rrggbb`. */
+export async function pixelsNear(
+  page: Page,
+  colours: string[],
+  tolerance = 4,
+  target: Locator = page.locator("#map"),
+): Promise<number[]> {
+  const png = await page.screenshot({ clip: (await target.boundingBox())! });
+  return page.evaluate(
+    async ([base64, list, tol]) => {
+      const bytes = Uint8Array.from(atob(base64 as string), (c) => c.charCodeAt(0));
+      const bitmap = await createImageBitmap(new Blob([bytes], { type: "image/png" }));
+      const canvas = document.createElement("canvas");
+      canvas.width = bitmap.width;
+      canvas.height = bitmap.height;
+      const context = canvas.getContext("2d")!;
+      context.drawImage(bitmap, 0, 0);
+      const { data } = context.getImageData(0, 0, canvas.width, canvas.height);
+      return (list as string[]).map((hex) => {
+        const [r, g, b] = [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16));
+        let count = 0;
+        for (let i = 0; i < data.length; i += 4) {
+          if (
+            Math.abs(data[i] - r) <= (tol as number) &&
+            Math.abs(data[i + 1] - g) <= (tol as number) &&
+            Math.abs(data[i + 2] - b) <= (tol as number)
+          ) {
+            count++;
+          }
+        }
+        return count;
+      });
+    },
+    [png.toString("base64"), colours, tolerance] as const,
+  );
+}
+
+export const LIGHT = { land: "#f6f6f3", woods: "#ecefe6", water: "#d5e2e8", road: "#dcdbd4", label: "#62625b" };
+export const DARK = { land: "#231216", woods: "#261a18", water: "#160b0e", road: "#5c3a3f", label: "#c4a0a4" };

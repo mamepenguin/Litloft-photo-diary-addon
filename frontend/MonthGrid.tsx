@@ -1,10 +1,16 @@
 "use client";
 
-import { Pen } from "lucide-react";
-import { useLocale, useTranslations } from "next-intl";
-import { formatDayLabel, monthGrid, weekdayLabels } from "./lib/dates";
+import { useLayoutEffect, useRef } from "react";
+import { useLocale } from "next-intl";
+import { DayCell, type DayInfo } from "./DayCell";
+import { monthGrid, weekdayLabels } from "./lib/dates";
+import type { DayPreview } from "./useDayPreview";
 
-export type DayInfo = { count: number; hasNote: boolean };
+export type { DayInfo };
+
+const FADE_MS = 450;
+const FADE_STEP_MS = 14;
+const NO_DAY: DayInfo = { count: 0, hasNote: false };
 
 type Props = {
   month: string;
@@ -12,21 +18,47 @@ type Props = {
   days: ReadonlyMap<string, DayInfo>;
   openDate: string | null;
   loading: boolean;
+  /** Whether the calendar view is on screen. */
+  active: boolean;
+  /** The page was opened with no query, so its first month is drawn with the fade. */
+  freshStart: boolean;
+  preview: DayPreview;
   onPick: (date: string) => void;
 };
 
-const CELL =
-  "flex h-12 flex-col items-stretch justify-between rounded-xl border-2 px-1.5 py-0.5 text-left transition-colors group-data-[wide=true]/diary:h-[76px] group-data-[wide=true]/diary:py-1.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus-ring";
-const SURFACE = {
-  photos: "bg-sand text-text-primary hover:bg-sand-hover",
-  note: "bg-bg-elevated text-text-primary hover:bg-sand",
-  quiet: "text-text-muted hover:bg-bg-elevated",
-};
-
-export function MonthGrid({ month, days, openDate, loading, onPick }: Props) {
-  const t = useTranslations("photoDiary");
+export function MonthGrid({ month, days, openDate, loading, active, freshStart, preview, onPick }: Props) {
   const locale = useLocale();
   const cells = monthGrid(month);
+  const buttons = useRef(new Map<string, HTMLButtonElement>());
+  const fades = useRef(new Map<string, Animation>());
+  const lastDrawn = useRef<string | null>(null);
+
+  // The surfaces fade when a month other than the last one drawn on screen
+  // appears, and on the first draw of a page opened with no query. A refresh
+  // or a re-read of the same month leaves `lastDrawn` as it is.
+  useLayoutEffect(() => {
+    if (loading || !active || lastDrawn.current === month) return;
+    const first = lastDrawn.current === null;
+    lastDrawn.current = month;
+    if (first && !freshStart) return;
+    if (window.matchMedia?.("(prefers-reduced-motion: reduce)").matches) return;
+    const start = [...buttons.current.entries()];
+    fades.current.clear();
+    for (const [date, element] of start) {
+      const info = days.get(date);
+      if (!info || info.count <= 0 || typeof element.animate !== "function") continue;
+      const day = Number(date.slice(8));
+      fades.current.set(
+        date,
+        element.animate([{ backgroundColor: "transparent" }, {}], {
+          duration: FADE_MS,
+          delay: (day - 1) * FADE_STEP_MS,
+          easing: "ease-out",
+          fill: "backwards",
+        }),
+      );
+    }
+  }, [month, loading, active, freshStart, days]);
 
   return (
     <div aria-busy={loading} className="grid grid-cols-7 gap-1.5">
@@ -48,40 +80,30 @@ export function MonthGrid({ month, days, openDate, loading, onPick }: Props) {
             </div>
           );
         }
-        const { count, hasNote } = days.get(date) ?? { count: 0, hasNote: false };
-        const open = date === openDate;
-        const text = formatDayLabel(date, locale);
-        const label =
-          hasNote && count > 0
-            ? t("calendar.dayLabelNoted", { date: text, count })
-            : hasNote
-              ? t("calendar.dayLabelNote", { date: text })
-              : count > 0
-                ? t("calendar.dayLabel", { date: text, count })
-                : text;
+        const info = days.get(date) ?? NO_DAY;
         return (
-          <button
+          <DayCell
             key={date}
-            type="button"
-            aria-label={label}
-            aria-pressed={open}
-            onClick={() => onPick(date)}
-            className={`${CELL} ${count > 0 ? SURFACE.photos : hasNote ? SURFACE.note : SURFACE.quiet} ${
-              open ? "border-accent" : "border-transparent"
-            }`}
-          >
-            <span className="flex items-center justify-between gap-1">
-              <span className="text-sm font-semibold">{day}</span>
-              {hasNote && (
-                <Pen
-                  size={12}
-                  aria-hidden="true"
-                  className="shrink-0 text-text-primary group-data-[wide=true]/diary:size-3.5"
-                />
-              )}
-            </span>
-            {count > 0 && <span className="text-xs text-text-muted">{count}</span>}
-          </button>
+            date={date}
+            day={day}
+            info={info}
+            open={date === openDate}
+            variant="grid"
+            buttonRef={(element) => {
+              if (element) buttons.current.set(date, element);
+              else buttons.current.delete(date);
+            }}
+            onPick={(picked) => {
+              preview.end();
+              onPick(picked);
+            }}
+            onPointerEnter={(event) => {
+              // A hover applies at once, and not through a fade still running.
+              fades.current.get(date)?.cancel();
+              preview.enter(date, info.count, event.currentTarget);
+            }}
+            onPointerLeave={preview.end}
+          />
         );
       })}
     </div>

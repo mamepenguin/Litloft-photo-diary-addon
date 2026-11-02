@@ -5,7 +5,7 @@ export function FileGrid({ files }: { files: { id: string; filename: string }[] 
   return (
     <div className="grid grid-cols-2 gap-2">
       {files.map((file) => (
-        <Link key={file.id} href={`?file=${file.id}`} className="block h-40 rounded-xl bg-bg-elevated p-2" data-testid="tile">
+        <Link key={file.id} href={`?file=${file.id}`} className="relative block h-40 rounded-xl bg-bg-elevated p-2" data-testid="tile">
           {file.filename}
         </Link>
       ))}

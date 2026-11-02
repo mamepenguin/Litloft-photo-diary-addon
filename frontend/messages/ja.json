@@ -42,6 +42,12 @@
       "restore": "元に戻す",
       "missing": "この日のメモのファイルが見つかりません",
       "restoreFailed": "元に戻せませんでした"
+    },
+    "pin": {
+      "label": "写真 {count}枚"
+    },
+    "strip": {
+      "showMonth": "月を表示"
     }
   }
 }

@@ -10,6 +10,7 @@ import { PageHeader } from "@/components/PageHeader";
 import { PageTabs } from "@/components/PageTabs";
 import { CalendarView } from "./CalendarView";
 import { MapView, type MapRestore } from "./MapView";
+import { useWide } from "./useWide";
 import type { ListPosition } from "./PhotoList";
 import { buildPageQuery, parsePageUrl, type PageUrl } from "./lib/pageUrl";
 import { clearState, loadState, saveState, type SavedState } from "./lib/savedState";
@@ -38,15 +39,27 @@ function Frame({
   children?: React.ReactNode;
 }) {
   const t = useTranslations("photoDiary");
+  const { ref, wide } = useWide<HTMLDivElement>();
   const scope =
     drive === undefined ? undefined : total == null ? drive : t("scope", { drive, count: total });
+  // The wrapper takes the place `PageFrame` had in `main`, so it fills it the same way.
   return (
-    <PageFrame
-      width="wide"
-      header={<PageHeader titleIcon={Images} title={t("nav.label")} scope={scope} tabs={tabs} />}
-    >
-      {children}
-    </PageFrame>
+    <div ref={ref} className="flex w-full min-w-0 flex-1 flex-col">
+      <PageFrame
+        width="wide"
+        header={
+          <PageHeader
+            titleIcon={Images}
+            title={t("nav.label")}
+            scope={scope}
+            actions={wide ? tabs : undefined}
+            tabs={wide ? undefined : tabs}
+          />
+        }
+      >
+        {children}
+      </PageFrame>
+    </div>
   );
 }
 
@@ -100,6 +113,7 @@ function Session({ drive }: { drive: string }) {
     };
   });
 
+  const freshStart = useRef(search === "");
   const saved = useRef<SavedState>(initial.saved);
   const calendarList = useRef<ListPosition | null>(null);
   const mapList = useRef<ListPosition | null>(null);
@@ -187,6 +201,7 @@ function Session({ drive }: { drive: string }) {
     saved.current = {};
     calendarRestore.current = null;
     mapRestore.current = {};
+    freshStart.current = true;
     setNotAvailable(false);
     setSeen({ calendar: true, map: false });
     setEpoch((value) => value + 1);
@@ -251,6 +266,7 @@ function Session({ drive }: { drive: string }) {
             onRestored={calendarRestored}
             onNotAvailable={onNotAvailable}
             onTotal={setTotal}
+            freshStart={freshStart.current}
           />
         </div>
       )}

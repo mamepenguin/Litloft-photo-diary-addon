@@ -4,7 +4,7 @@
  */
 import { expect, test, type Page } from "@playwright/test";
 import { BIG_DAY, addAppHeader, expectReachable, openPointList, serveApi } from "./pageSupport";
-import { accentPixels, prepare, settle } from "./support";
+import { accentBorders, prepare, settle } from "./support";
 
 const PAGE_PATH = "/page.html";
 
@@ -178,24 +178,23 @@ test.describe("a URL with no query reached while the page stays mounted", () => 
   });
 });
 
-test.describe("the selected point follows the open list", () => {
-  test("SPEC-PD-002 design: accent while the list is open, after Back, and gone once it is closed", async ({ page }) => {
+test.describe("the selected pin follows the open list", () => {
+  test("SPEC-PD-011: accent border while the list is open, after Back, and gone once it is closed", async ({ page }) => {
     await page.setViewportSize({ width: 1280, height: 800 });
     const h = await open(page, "?view=map");
     await settle(page, h);
-    const canvas = page.locator("canvas").first();
-    expect(await accentPixels(page, "centre", canvas)).toBe(0);
+    expect(await accentBorders(page, "body")).toBe(0);
 
     await openPointList(page);
-    await expect.poll(() => accentPixels(page, "centre", canvas), { timeout: 10_000 }).toBeGreaterThan(40);
+    await expect.poll(() => accentBorders(page, "body"), { timeout: 10_000 }).toBe(1);
 
     await page.getByTestId("tile").first().click();
     await expect(page.locator("#file-page")).toBeVisible();
     await page.goBack();
     await expect(page.getByTestId("tile").first()).toBeVisible();
-    await expect.poll(() => accentPixels(page, "centre", canvas), { timeout: 10_000 }).toBeGreaterThan(40);
+    await expect.poll(() => accentBorders(page, "body"), { timeout: 10_000 }).toBe(1);
 
     await page.getByRole("button", { name: "Close", exact: true }).click();
-    await expect.poll(() => accentPixels(page, "centre", canvas), { timeout: 10_000 }).toBe(0);
+    await expect.poll(() => accentBorders(page, "body"), { timeout: 10_000 }).toBe(0);
   });
 });

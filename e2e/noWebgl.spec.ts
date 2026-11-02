@@ -13,6 +13,7 @@ test("SPEC-PD-001: a browser without WebGL makes the map reject with WebGLUnavai
         points: o.points,
         tileUrl: o.tileUrl,
         attribution: "",
+            pinLabel: (count: number) => `${count} photos`,
         onPointClick: () => {},
         onPointError: () => {},
         onTileFailureChange: () => {},

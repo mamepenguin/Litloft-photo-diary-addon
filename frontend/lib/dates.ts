@@ -59,3 +59,14 @@ export function localToday(now: Date = new Date()): string {
   const pad = (value: number) => String(value).padStart(2, "0");
   return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
 }
+
+/** The seven dates, Sunday first, of the week that holds `date`. */
+export function weekOf(date: string): string[] {
+  const [year, m, day] = parse(date);
+  const start = day - utcDate(year, m, day).getUTCDay();
+  return Array.from({ length: 7 }, (_, i) => {
+    const d = utcDate(year, m, start + i);
+    const pad = (value: number) => String(value).padStart(2, "0");
+    return `${String(d.getUTCFullYear()).padStart(4, "0")}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())}`;
+  });
+}
