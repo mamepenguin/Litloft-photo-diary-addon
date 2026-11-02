@@ -47,6 +47,8 @@ interface GeoJSONSourceLike {
 
 
 interface MapLike {
+  touchZoomRotate: { disableRotation(): void };
+  keyboard: { disableRotation(): void };
   getSource(id: "points"): GeoJSONSourceLike | undefined;
   addControl(control: unknown, position?: string): void;
   addSource(id: string, source: unknown): void;
@@ -298,6 +300,8 @@ export async function createPhotoMap(
       container,
       style: buildStyle(options, toCollection(currentPoints, selected, ranking.rankOf)),
       maxZoom: MAX_ZOOM,
+      bearing: 0,
+      dragRotate: false,
       attributionControl: false,
       // Han, kana and Hangul are drawn with the page's own fonts.
       localIdeographFontFamily: getComputedStyle(document.body).fontFamily,
@@ -313,6 +317,8 @@ export async function createPhotoMap(
     throw error;
   }
 
+  map.touchZoomRotate.disableRotation();
+  map.keyboard.disableRotation();
   map.addControl(new maplibre.AttributionControl({ compact: false }), "top-left");
   map.addControl(new maplibre.NavigationControl({ showCompass: false }), "top-right");
 
