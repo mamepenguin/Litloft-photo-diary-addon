@@ -1,39 +1,51 @@
 import { describe, expect, it } from "vitest";
 import { baseLayers, glyphUrl, paintFor, PALETTES, TILE_MAX_ZOOM } from "./mapStyle";
 
-// SPEC-PD-010: the layer table and the palettes, as the spec states them.
 const ids = (theme: "light" | "dark") => baseLayers(theme).map((l) => l.id);
 
-describe("SPEC-PD-010: the base map's layers", () => {
+describe("SPEC-PD-013: the base map's layers", () => {
   it("are these, bottom to top, and nothing else", () => {
     expect(ids("light")).toEqual([
       "background",
       "woods",
+      "parks",
       "ocean",
       "water",
+      "river-areas",
       "rivers",
+      "buildings",
+      "small-streets",
       "minor-streets",
       "main-streets",
       "motorways",
       "rail",
       "names",
+      "stations",
+      "countries",
+      "states",
+      "neighbourhoods",
+      "islands",
+      "water-names",
+      "river-names",
+      "park-names",
+      "places-to-remember",
     ]);
     expect(ids("dark")).toEqual(ids("light"));
   });
 
-  it("draw only the source layers the spec lists: no buildings, street names, boundaries or points of interest", () => {
+  it("draw only the approved source layers, without street names or addresses", () => {
     const used = new Set(baseLayers("light").map((l) => (l as { "source-layer"?: string })["source-layer"]).filter(Boolean));
-    expect([...used].sort()).toEqual(["land", "ocean", "place_labels", "streets", "water_lines", "water_polygons"]);
+    expect([...used].sort()).toEqual(["boundary_labels", "buildings", "land", "ocean", "place_labels", "pois", "public_transport", "streets", "water_lines", "water_lines_labels", "water_polygons", "water_polygons_labels"]);
   });
 
   it("take the kinds the spec lists", () => {
     const layer = (id: string) => baseLayers("light").find((l) => l.id === id) as Record<string, any>;
-    const kinds = (id: string) => (layer(id).filter as any[])[2][1] as string[];
-    expect(kinds("woods")).toEqual(["forest", "wood", "park", "grass", "meadow", "village_green", "golf_course", "scrub", "recreation_ground"]);
+    const kinds = (id: string) => (id === "names" ? (layer(id).filter as any[])[1] : layer(id).filter as any[])[2][1] as string[];
+    expect(kinds("woods")).toEqual(["forest", "wood"]);
     expect(kinds("minor-streets")).toEqual(["tertiary", "unclassified", "residential", "living_street"]);
     expect(kinds("main-streets")).toEqual(["primary", "secondary"]);
     expect(kinds("motorways")).toEqual(["motorway", "trunk"]);
-    expect(kinds("names")).toEqual(["capital", "state_capital", "city", "town", "village", "suburb"]);
+    expect(kinds("names")).toEqual(["capital", "state_capital", "city", "town", "village"]);
     expect(layer("rivers").filter).toEqual(["==", ["get", "kind"], "river"]);
     expect(layer("rail").filter).toEqual(["==", ["get", "kind"], "rail"]);
   });
@@ -46,7 +58,7 @@ describe("SPEC-PD-010: the base map's layers", () => {
     expect(layer("main-streets").paint["line-width"]).toEqual(["interpolate", ["linear"], ["zoom"], 9, 0.5, 13, 1.4, 16, 4]);
     expect(layer("motorways").paint["line-width"]).toEqual(["interpolate", ["linear"], ["zoom"], 9, 0.8, 13, 2.2, 16, 6]);
     expect(layer("rail").paint["line-width"]).toBe(1);
-    expect(layer("rail").paint["line-dasharray"]).toEqual([3, 2]);
+    expect(layer("rail").paint["line-dasharray"]).toBeUndefined();
   });
 
   it("draw names in Noto Sans at 14, 13 and 12 with a 1.4 halo", () => {
@@ -61,30 +73,46 @@ describe("SPEC-PD-010: the base map's layers", () => {
 
   it("carry the palettes' colours", () => {
     expect(PALETTES.light).toEqual({
-      land: "#f6f6f3",
-      woods: "#ecefe6",
-      water: "#d5e2e8",
+      land: "#f7f7f5",
+      woods: "#dce8d8",
+      water: "#dcecf1",
       minorRoad: "#ffffff",
-      majorRoad: "#dcdbd4",
-      rail: "#d8d7d0",
-      label: "#62625b",
-      halo: "#f6f6f3",
+      majorRoad: "#e3e3e0",
+      rail: "#b6b6b2",
+      label: "#676d70",
+      halo: "#f7f7f5",
+      park: "#e5eedf",
+      river: "#c5dfe8",
+      building: "#ebebe8",
+      secondaryLabel: "#989e9f",
+      parkLabel: "#7c9881",
+      waterLabel: "#7299a7",
+      naturalLabel: "#818785",
+      poiLabel: "#777d80",
     });
     expect(PALETTES.dark).toEqual({
       land: "#231216",
-      woods: "#261a18",
-      water: "#160b0e",
-      minorRoad: "#3a2226",
-      majorRoad: "#5c3a3f",
-      rail: "#3d2428",
-      label: "#c4a0a4",
+      woods: "#243023",
+      water: "#1c2930",
+      minorRoad: "#3a2e31",
+      majorRoad: "#514449",
+      rail: "#7a7373",
+      label: "#cec7c8",
       halo: "#231216",
+      park: "#293127",
+      river: "#29414b",
+      building: "#32282a",
+      secondaryLabel: "#9f999b",
+      parkLabel: "#9fb39e",
+      waterLabel: "#91afbb",
+      naturalLabel: "#a9b0a9",
+      poiLabel: "#b8b5b7",
     });
     const paint = (theme: "light" | "dark", id: string, property: string) =>
       paintFor(theme).find(([layer, p]) => layer === id && p === property)![2];
     expect(paint("dark", "background", "background-color")).toBe("#231216");
-    expect(paint("light", "main-streets", "line-color")).toBe("#dcdbd4");
-    expect(paint("dark", "minor-streets", "line-color")).toBe("#3a2226");
+    expect(paint("light", "main-streets", "line-color")).toBe("#e3e3e0");
+    expect(paint("dark", "minor-streets", "line-color")).toBe("#3a2e31");
     expect(paint("dark", "names", "text-halo-color")).toBe("#231216");
   });
 
