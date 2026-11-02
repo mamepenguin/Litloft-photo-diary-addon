@@ -4,7 +4,7 @@ An addon for [Litloft](https://github.com/mamepenguin/Litloft) that shows the ph
 
 - **Calendar.** Days with photos show their count, on a deeper tint the more photos the day holds. Resting the pointer on a day previews one of its photos. On a narrow screen a one-week strip stays under the app header while a day's photos scroll. Pressing a day lists its photos. Photos without a capture date are listed under "No capture date". Every day can be pressed, and a **Today** control goes to the current date.
 - **Notes.** A day can have one short Markdown note, shown above its photos in the day's panel and marked in the calendar. See [Daily notes](#daily-notes).
-- **Map.** Photos with a GPS position are drawn as thumbnails that merge and split as you zoom; a badge shows how many photos a thumbnail stands for. Pressing one lists the photos it stands for, one section per capture date. A section heading links to that day in the calendar.
+- **Map.** Photos with a GPS position are drawn as thumbnails that merge and split as you zoom; a badge shows how many photos a thumbnail stands for. Pressing one lists the photos it stands for, one section per capture date. A section heading links to that day in the calendar. North stays at the top: dragging and pinching move and zoom the map without rotating it.
 
 Photos are placed by the capture date and GPS position the core already stores for each image. The addon owns no table, and its backend writes nothing. Notes are created and restored by the page through the core's public API. It is drive-scoped: it reads one drive at a time, and only drives the viewer may open and whose addon policy allows it.
 

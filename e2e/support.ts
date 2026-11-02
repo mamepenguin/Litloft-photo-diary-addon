@@ -82,8 +82,7 @@ function features(name: string, keys: string[], values: string[], list: { type: 
 /**
  * The same tile for every address: the left half is a park, the top right
  * corner is water, the rest is land. A street, a city name in Latin letters
- * and one in Han characters sit on it, and a layer of buildings that the style
- * does not draw. So the base shows the palette's surfaces wherever the map looks.
+ * and one in Han characters sit on it, and buildings appear at high zoom.
  */
 export const VECTOR_TILE = Buffer.from([
   ...layer("land", "park", rectangle(0, 0, EXTENT / 2, EXTENT)),
@@ -320,5 +319,5 @@ export async function pixelsNear(
   );
 }
 
-export const LIGHT = { land: "#f6f6f3", woods: "#ecefe6", water: "#d5e2e8", road: "#dcdbd4", label: "#62625b" };
-export const DARK = { land: "#231216", woods: "#261a18", water: "#160b0e", road: "#5c3a3f", label: "#c4a0a4" };
+export const LIGHT = { land: "#f7f7f5", woods: "#e5eedf", water: "#dcecf1", road: "#e3e3e0", label: "#676d70" };
+export const DARK = { land: "#231216", woods: "#293127", water: "#1c2930", road: "#514449", label: "#cec7c8" };
