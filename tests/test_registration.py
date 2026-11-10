@@ -27,7 +27,7 @@ def test_pd003_addon_is_registered_with_declared_metadata(env):
     assert nav["label"] == "Photo Diary"
     assert nav["placement"] == "primary"
     assert nav["priority"] == 30
-    assert "icon" not in nav or nav["icon"] is None
+    assert nav["icon"] == "images"
 
 
 def test_pd003_addon_is_dropped_from_a_drive_whose_policy_is_off(env):

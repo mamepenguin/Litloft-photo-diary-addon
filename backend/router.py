@@ -40,6 +40,7 @@ ADDON_META = {
     "navigation": {
         "label": "Photo Diary",
         "i18n_key": "photoDiary.nav.label",
+        "icon": "images",
         "placement": "primary",
         "priority": 30,
     },
