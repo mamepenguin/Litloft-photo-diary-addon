@@ -1,0 +1,135 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<title>Photo Diary ダーク地図の配色</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;700&amp;display=swap">
+<style>
+body{margin:0}
+a{color:#e85d5e}a:hover{color:#f07070}
+</style>
+</helmet>
+<div style="width: 1880px; height: 760px; box-sizing: border-box; padding: 40px; background: #0b0b0a; font-family: 'Noto Sans JP', system-ui, sans-serif; color: #eeeeea; display: flex; gap: 40px;">
+<sc-for list="{{panels}}" as="p" hint-placeholder-count="3">
+<section style="width: 573px; display: flex; flex-direction: column; gap: 16px;">
+<div style="display: flex; align-items: baseline; gap: 12px; height: 28px;">
+<h2 style="margin: 0; font-size: 20px; font-weight: 700; line-height: 28px;">{{p.name}}</h2>
+<sc-if value="{{p.recommended}}" hint-placeholder-val="{{false}}">
+<span style="font-size: 12px; font-weight: 500; line-height: 20px; padding: 0 8px; border-radius: 10px; background: rgba(232,93,94,0.18); color: #f07070;">推奨</span>
+</sc-if>
+<span style="margin-left: auto; font-size: 13px; color: #a5a59f; font-variant-numeric: tabular-nums;">陸地 {{p.land}}</span>
+</div>
+
+<div style="background: #131312; border-radius: 16px; border: 1px solid rgba(255,255,255,0.08); overflow: hidden; display: flex; flex-direction: column;">
+<div style="height: 52px; box-sizing: border-box; padding: 0 16px; display: flex; align-items: center; gap: 12px; border-bottom: 1px solid rgba(255,255,255,0.08);">
+<span style="font-size: 16px; font-weight: 700; color: #eeeeea;">Photo Diary</span>
+<div style="margin-left: auto; display: flex; gap: 4px; padding: 3px; border-radius: 12px; background: #272725;">
+<button type="button" style="border: 0; font: inherit; font-size: 13px; padding: 4px 12px; border-radius: 9px; background: transparent; color: #a5a59f;">カレンダー</button>
+<button type="button" style="border: 0; font: inherit; font-size: 13px; padding: 4px 12px; border-radius: 9px; background: #1c1c1b; color: #eeeeea;">地図</button>
+</div>
+</div>
+
+<div style="position: relative; height: 420px; overflow: hidden;">
+<svg width="573" height="420" viewBox="0 0 573 420" role="img" aria-label="{{p.name}} の地図" style="display: block;">
+<rect x="0" y="0" width="573" height="420" fill="{{p.land}}"></rect>
+<path d="M0 40 C60 30 110 70 150 60 L170 140 C120 150 70 170 0 160 Z" fill="{{p.woods}}"></path>
+<path d="M250 210 L330 200 L345 262 L262 278 Z" fill="{{p.park}}"></path>
+<path d="M573 250 C520 262 470 300 450 340 C430 380 440 420 440 420 L573 420 Z" fill="{{p.water}}"></path>
+<path d="M500 330 C506 322 520 322 524 330 C528 340 516 348 506 344 C498 340 496 336 500 330 Z" fill="{{p.land}}"></path>
+<path d="M0 260 C80 250 150 300 230 300 C310 300 360 330 450 345 L446 360 C356 346 306 316 230 316 C150 316 80 268 0 276 Z" fill="{{p.river}}"></path>
+<path d="M120 0 C140 60 170 110 200 150" fill="none" stroke="{{p.river}}" stroke-width="1.2"></path>
+<g fill="{{p.building}}">
+<rect x="360" y="60" width="22" height="16" rx="1"></rect><rect x="388" y="58" width="18" height="20" rx="1"></rect><rect x="412" y="62" width="26" height="14" rx="1"></rect>
+<rect x="360" y="96" width="16" height="22" rx="1"></rect><rect x="382" y="98" width="24" height="18" rx="1"></rect><rect x="414" y="96" width="20" height="20" rx="1"></rect>
+<rect x="452" y="60" width="20" height="18" rx="1"></rect><rect x="452" y="98" width="24" height="16" rx="1"></rect><rect x="486" y="62" width="18" height="22" rx="1"></rect>
+<rect x="210" y="70" width="18" height="14" rx="1"></rect><rect x="234" y="66" width="22" height="18" rx="1"></rect><rect x="210" y="98" width="20" height="18" rx="1"></rect>
+</g>
+<g fill="none" stroke="{{p.minorRoad}}" stroke-width="3" stroke-linecap="round">
+<path d="M350 88 L520 88"></path><path d="M350 128 L520 130"></path><path d="M444 40 L446 180"></path><path d="M200 90 L300 92"></path><path d="M270 40 L272 200"></path><path d="M150 200 L250 210"></path>
+</g>
+<g fill="none" stroke="{{p.majorRoad}}" stroke-linecap="round">
+<path d="M0 190 C120 186 240 170 350 150 C430 136 500 150 573 160" stroke-width="4"></path>
+<path d="M340 0 C344 80 346 160 340 250" stroke-width="4"></path>
+<path d="M0 380 C140 370 260 390 420 410" stroke-width="6"></path>
+</g>
+<path d="M0 228 C150 226 300 220 573 200" fill="none" stroke="{{p.rail}}" stroke-width="1"></path>
+<g font-family="Noto Sans JP, sans-serif" stroke="{{p.halo}}" stroke-width="2.8" paint-order="stroke" stroke-linejoin="round">
+<text x="384" y="158" font-size="14" fill="{{p.label}}">港町</text>
+<text x="456" y="222" font-size="12" fill="{{p.label}}">中央駅</text>
+<text x="226" y="58" font-size="12" fill="{{p.secondaryLabel}}">北浜</text>
+<text x="262" y="244" font-size="12" fill="{{p.parkLabel}}">みなと公園</text>
+<text x="490" y="300" font-size="12" fill="{{p.waterLabel}}">東湾</text>
+<text x="96" y="292" font-size="12" fill="{{p.waterLabel}}">白川</text>
+<text x="500" y="364" font-size="12" fill="{{p.naturalLabel}}">鳥島</text>
+<text x="456" y="52" font-size="12" fill="{{p.poiLabel}}">市立美術館</text>
+<text x="40" y="104" font-size="12" fill="{{p.naturalLabel}}">西の森</text>
+</g>
+</svg>
+
+<div style="position: absolute; left: 172px; top: 118px; width: 48px; height: 48px; box-sizing: border-box; border: 2.5px solid #ffffff; border-radius: 12px; background: #8a6f52; box-shadow: 0 1px 3px rgba(33,25,34,0.25);"></div>
+<div style="position: absolute; left: 204px; top: 108px; min-width: 18px; height: 18px; box-sizing: border-box; padding: 0 5px; border: 1.5px solid #ffffff; border-radius: 9px; background: #211922; color: #ffffff; font-size: 11px; line-height: 15px; text-align: center; font-variant-numeric: tabular-nums;">12</div>
+
+<div style="position: absolute; left: 392px; top: 176px; width: 48px; height: 48px; box-sizing: border-box; border: 2.5px solid #e85d5e; border-radius: 12px; background: #5f7c8e; box-shadow: 0 1px 3px rgba(33,25,34,0.25);"></div>
+<div style="position: absolute; left: 424px; top: 166px; min-width: 18px; height: 18px; box-sizing: border-box; padding: 0 5px; border: 1.5px solid #ffffff; border-radius: 9px; background: #211922; color: #ffffff; font-size: 11px; line-height: 15px; text-align: center; font-variant-numeric: tabular-nums;">3</div>
+
+<div style="position: absolute; left: 290px; top: 300px; width: 48px; height: 48px; box-sizing: border-box; border: 2.5px solid #ffffff; border-radius: 12px; background: #7d8a5a; box-shadow: 0 1px 3px rgba(33,25,34,0.25);"></div>
+
+<div style="position: absolute; left: 50%; top: 12px; transform: translateX(-50%); border-radius: 16px; border: 1px solid rgba(255,255,255,0.08); background: #1c1c1b; padding: 8px 16px; font-size: 13px; color: #eeeeea; white-space: nowrap;">地図の一部を読み込めませんでした</div>
+
+<div style="position: absolute; right: 12px; top: 12px; display: flex; flex-direction: column; border-radius: 10px; overflow: hidden; background: #ffffff;">
+<button type="button" aria-label="拡大" style="width: 30px; height: 30px; border: 0; background: #ffffff; color: #333333; font-size: 18px; line-height: 30px;">+</button>
+<button type="button" aria-label="縮小" style="width: 30px; height: 30px; border: 0; border-top: 1px solid #dddddd; background: #ffffff; color: #333333; font-size: 18px; line-height: 30px;">−</button>
+</div>
+</div>
+</div>
+
+<div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px 12px;">
+<sc-for list="{{p.swatches}}" as="s" hint-placeholder-count="9">
+<div style="display: flex; align-items: center; gap: 8px; font-size: 12px; line-height: 16px;">
+<span style="width: 16px; height: 16px; border-radius: 4px; border: 1px solid rgba(255,255,255,0.12); background: {{s.hex}}; flex: none;"></span>
+<span style="color: #a5a59f;">{{s.label}}</span>
+<span style="margin-left: auto; color: #eeeeea; font-variant-numeric: tabular-nums;">{{s.hex}}</span>
+</div>
+</sc-for>
+</div>
+</section>
+</sc-for>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1880,"height":760}}'>
+class Component extends DCLogic {
+renderVals() {
+var keep = { woods: '#243023', water: '#1c2930', park: '#293127', river: '#29414b', parkLabel: '#9fb39e', waterLabel: '#91afbb', naturalLabel: '#a9b0a9' };
+var mk = function (name, recommended, v) {
+var p = Object.assign({}, keep, v, { name: name, recommended: recommended });
+p.swatches = [
+{ label: '陸地・ハロー', hex: p.land },
+{ label: '建物', hex: p.building },
+{ label: '一般道路', hex: p.minorRoad },
+{ label: '幹線道路', hex: p.majorRoad },
+{ label: '鉄道', hex: p.rail },
+{ label: '主要文字', hex: p.label },
+{ label: '補助文字', hex: p.secondaryLabel },
+{ label: '施設文字', hex: p.poiLabel },
+{ label: '水・緑（据え置き）', hex: p.water }
+];
+return p;
+};
+return {
+panels: [
+mk('現在', false, { land: '#231216', halo: '#231216', building: '#32282a', minorRoad: '#3a2e31', majorRoad: '#514449', rail: '#7a7373', label: '#cec7c8', secondaryLabel: '#9f999b', poiLabel: '#b8b5b7' }),
+mk('A  陸地 = bg-card', true, { land: '#1c1c1b', halo: '#1c1c1b', building: '#30302d', minorRoad: '#363633', majorRoad: '#4d4d4a', rail: '#767672', label: '#cbcbc6', secondaryLabel: '#9c9c97', poiLabel: '#b7b7b2' }),
+mk('B  明るさ据え置き', false, { land: '#181815', halo: '#181815', building: '#2b2b28', minorRoad: '#32322f', majorRoad: '#484845', rail: '#757572', label: '#c9c9c5', secondaryLabel: '#9b9b97', poiLabel: '#b6b6b3' })
+]
+};
+}
+}
+</script>
+</body>
+</html>

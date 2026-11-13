@@ -71,7 +71,7 @@ describe("SPEC-PD-013: the base map's layers", () => {
     expect(names.paint["text-halo-width"]).toBe(1.4);
   });
 
-  it("carry the palettes' colours", () => {
+  it("carry the palettes' colours, the dark one per SPEC-PD-015", () => {
     expect(PALETTES.light).toEqual({
       land: "#f7f7f5",
       woods: "#dce8d8",
@@ -91,29 +91,29 @@ describe("SPEC-PD-013: the base map's layers", () => {
       poiLabel: "#777d80",
     });
     expect(PALETTES.dark).toEqual({
-      land: "#231216",
+      land: "#1c1c1b",
       woods: "#243023",
       water: "#1c2930",
-      minorRoad: "#3a2e31",
-      majorRoad: "#514449",
-      rail: "#7a7373",
-      label: "#cec7c8",
-      halo: "#231216",
+      minorRoad: "#363633",
+      majorRoad: "#4d4d4a",
+      rail: "#767672",
+      label: "#cbcbc6",
+      halo: "#1c1c1b",
       park: "#293127",
       river: "#29414b",
-      building: "#32282a",
-      secondaryLabel: "#9f999b",
+      building: "#30302d",
+      secondaryLabel: "#9c9c97",
       parkLabel: "#9fb39e",
       waterLabel: "#91afbb",
       naturalLabel: "#a9b0a9",
-      poiLabel: "#b8b5b7",
+      poiLabel: "#b7b7b2",
     });
     const paint = (theme: "light" | "dark", id: string, property: string) =>
       paintFor(theme).find(([layer, p]) => layer === id && p === property)![2];
-    expect(paint("dark", "background", "background-color")).toBe("#231216");
+    expect(paint("dark", "background", "background-color")).toBe("#1c1c1b");
     expect(paint("light", "main-streets", "line-color")).toBe("#e3e3e0");
-    expect(paint("dark", "minor-streets", "line-color")).toBe("#3a2e31");
-    expect(paint("dark", "names", "text-halo-color")).toBe("#231216");
+    expect(paint("dark", "minor-streets", "line-color")).toBe("#363633");
+    expect(paint("dark", "names", "text-halo-color")).toBe("#1c1c1b");
   });
 
   it("repaint every colour that a theme sets, and no layer is added or lost by it", () => {
