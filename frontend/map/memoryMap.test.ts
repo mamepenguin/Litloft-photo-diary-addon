@@ -60,7 +60,7 @@ function named(kind: string, source?: string): Properties {
 
 const colors = {
   light: { land: '#F7F7F5', water: '#DCECF1', river: '#C5DFE8', park: '#E5EEDF', forest: '#DCE8D8', building: '#EBEBE8', rail: '#B6B6B2', primary: '#676D70', secondary: '#989E9F', parkLabel: '#7C9881', waterLabel: '#7299A7', nature: '#818785', facility: '#777D80' },
-  dark: { land: '#231216', water: '#1C2930', river: '#29414B', park: '#293127', forest: '#243023', building: '#32282A', rail: '#7A7373', primary: '#CEC7C8', secondary: '#9F999B', parkLabel: '#9FB39E', waterLabel: '#91AFBB', nature: '#A9B0A9', facility: '#B8B5B7' },
+  dark: { land: '#1C1C1B', water: '#1C2930', river: '#29414B', park: '#293127', forest: '#243023', building: '#30302D', rail: '#767672', primary: '#CBCBC6', secondary: '#9C9C97', parkLabel: '#9FB39E', waterLabel: '#91AFBB', nature: '#A9B0A9', facility: '#B7B7B2' },
 };
 
 for (const theme of ['light', 'dark'] as const) {

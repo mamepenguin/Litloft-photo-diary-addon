@@ -42,7 +42,7 @@ const SURFACES = Buffer.from([
 
 for (const [theme, colours] of Object.entries({
   light: { building: "#EBEBE8", surfaces: ["#DCE8D8", "#E5EEDF", "#DCECF1", "#C5DFE8"] },
-  dark: { building: "#32282A", surfaces: ["#243023", "#293127", "#1C2930", "#29414B"] },
+  dark: { building: "#30302D", surfaces: ["#243023", "#293127", "#1C2930", "#29414B"] },
 })) {
   test(`SPEC-PD-013 ${theme}: forests, parks, lakes and rivers remain visibly distinct`, async ({ page }) => {
     const h = await prepare(page);

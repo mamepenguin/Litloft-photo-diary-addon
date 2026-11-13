@@ -320,4 +320,4 @@ export async function pixelsNear(
 }
 
 export const LIGHT = { land: "#f7f7f5", woods: "#e5eedf", water: "#dcecf1", road: "#e3e3e0", label: "#676d70" };
-export const DARK = { land: "#231216", woods: "#293127", water: "#1c2930", road: "#514449", label: "#cec7c8" };
+export const DARK = { land: "#1c1c1b", woods: "#293127", water: "#1c2930", road: "#4d4d4a", label: "#cbcbc6" };
