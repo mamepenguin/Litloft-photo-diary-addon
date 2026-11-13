@@ -577,10 +577,25 @@ test.describe("SPEC-PD-011: a pin is a photo with a count badge", () => {
       lon: 139.6 + (((i * 104729) % 50_000) / 50_000) * 0.3,
       taken_at: `2026-01-01T00:${String(i % 60).padStart(2, "0")}:00`,
     }));
-    const started = Date.now();
+    // Timed in the page from the call to the first pin: handing 50,000 points
+    // to the page through the test's evaluate takes about as long as placing
+    // them, and is not the map's work.
+    await page.evaluate(() => {
+      const w = window as any;
+      const create = w.createPhotoMap;
+      w.createPhotoMap = (...args: unknown[]) => {
+        w.__calledAt = performance.now();
+        return create(...args);
+      };
+      new MutationObserver((_, observer) => {
+        if (!document.querySelector("#map button img")) return;
+        w.__pinAt = performance.now();
+        observer.disconnect();
+      }).observe(document.getElementById("map")!, { childList: true, subtree: true });
+    });
     await createMap(page, { points, center: [139.75, 35.7], zoom: 12 });
     await expect(pinsOf(page).first()).toBeVisible({ timeout: 15_000 });
-    const placed = Date.now() - started;
+    const placed = Math.round(await page.evaluate(() => (window as any).__pinAt - (window as any).__calledAt));
     test.info().annotations.push({ type: "placement", description: `${placed} ms` });
     console.log(`PLACEMENT_MS ${placed}`);
     expect(placed).toBeLessThan(3000);
