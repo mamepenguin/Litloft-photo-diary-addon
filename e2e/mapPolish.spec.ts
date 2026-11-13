@@ -235,10 +235,17 @@ test.describe("SPEC-PD-011: a pin is a photo with a count badge", () => {
     await page.mouse.move(box.x + 640, box.y + 480);
     await page.mouse.down();
     await page.mouse.move(box.x + 640 + 100, box.y + 480, { steps: 6 });
+    // MapLibre gives a drag inertia from the moves of its last 160 ms; holding
+    // still first keeps the map where the mouse left it, so the zoom below
+    // keeps both pins in view.
+    await page.waitForTimeout(300);
+    const views = h.views.length;
     await page.mouse.up();
-    await expect.poll(async () => Math.round((await centreOf("3 photos")).x - right.x)).toBeGreaterThan(90);
-    expect(Math.abs((await centreOf("3 photos")).x - right.x - 100)).toBeLessThan(6);
-    expect(Math.abs((await centreOf("2 photos")).x - left.x - 100)).toBeLessThan(6);
+    await expect.poll(() => h.views.length).toBeGreaterThan(views);
+    const moved = (A[0] - h.views[h.views.length - 1].center[0]) * ((512 * 2 ** 12) / 360);
+    expect(Math.abs(moved - 100)).toBeLessThan(2);
+    expect(Math.abs((await centreOf("3 photos")).x - right.x - moved)).toBeLessThan(2);
+    expect(Math.abs((await centreOf("2 photos")).x - left.x - moved)).toBeLessThan(2);
 
     const gap = (await centreOf("3 photos")).x - (await centreOf("2 photos")).x;
     await zoomInAtCentre(page);
@@ -570,10 +577,25 @@ test.describe("SPEC-PD-011: a pin is a photo with a count badge", () => {
       lon: 139.6 + (((i * 104729) % 50_000) / 50_000) * 0.3,
       taken_at: `2026-01-01T00:${String(i % 60).padStart(2, "0")}:00`,
     }));
-    const started = Date.now();
+    // Timed in the page from the call to the first pin: handing 50,000 points
+    // to the page through the test's evaluate takes about as long as placing
+    // them, and is not the map's work.
+    await page.evaluate(() => {
+      const w = window as any;
+      const create = w.createPhotoMap;
+      w.createPhotoMap = (...args: unknown[]) => {
+        w.__calledAt = performance.now();
+        return create(...args);
+      };
+      new MutationObserver((_, observer) => {
+        if (!document.querySelector("#map button img")) return;
+        w.__pinAt = performance.now();
+        observer.disconnect();
+      }).observe(document.getElementById("map")!, { childList: true, subtree: true });
+    });
     await createMap(page, { points, center: [139.75, 35.7], zoom: 12 });
     await expect(pinsOf(page).first()).toBeVisible({ timeout: 15_000 });
-    const placed = Date.now() - started;
+    const placed = Math.round(await page.evaluate(() => (window as any).__pinAt - (window as any).__calledAt));
     test.info().annotations.push({ type: "placement", description: `${placed} ms` });
     console.log(`PLACEMENT_MS ${placed}`);
     expect(placed).toBeLessThan(3000);
