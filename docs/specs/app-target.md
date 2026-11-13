@@ -86,6 +86,8 @@ change to the map's style or the calendar's layout beyond the header.
    - A target that resolves to empty (its kinds hold no image) sends `none=true` alone.
    - The backend answers 422 when `none=true` arrives with any target parameter.
      `none=false` is the same as no `none`.
+   - The photo routes declare `search` with at most 200 characters, as the core's listing
+     does, and answer 422 above that; the page shows it as it shows a 400.
 7. The backend narrows its photo set to the ids of `filtered_drive_files(db, drive,
    type=["image"], ...)` with those parameters, so a target gives the same images as the
    core's listing `GET /api/drives/{drive}/files?type=image&...`. With `none=true` it counts
@@ -104,13 +106,22 @@ change to the map's style or the calendar's layout beyond the header.
      its count, an open list (read again from its first page), the map's pins. If the new
      read fails, the surface shows its load error with retry and still nothing of the
      previous target. Note marks are drawn again from the new answer like the counts.
-   - The map keeps its centre and zoom and closes an open pin list.
+   - The map keeps its centre and zoom and closes an open pin list. It keeps them even when
+     none of the new target's pins is in view (decided by the user); a map that had no
+     view yet fits the new pins, as it does today on its first draw.
    - The calendar does not fade: a target change is on the "draw at once" side of
      `ui-polish.md` I3, whether the month stays or becomes the new target's newest.
    - Held previews are dropped, and the saved scroll positions and saved pin list
-     (`photo_diary:state:<drive>`) are cleared. The saved state also records the target
-     id it was saved under, and a restore is skipped when that id differs from the target
-     in force, so a change made in another tab is covered too.
+     (`photo_diary:state:<drive>`) are cleared.
+   - The saved state records the id of the target in force when it was saved (`default`
+     or a folder id; state written before this change counts as `default`). When going
+     back restores it, the check runs once the look-up of 4 is done (photo requests are
+     held until then anyway). On a mismatch the list position, its view and the pin list
+     are dropped; the map's centre and zoom are restored either way. This also covers a
+     target changed in another tab.
+   - Every choice in the menu is saved with `writeAppTarget`. A choice that leaves the
+     target in force as it is (choosing it again, or choosing the default while a saved
+     folder falls back to it) reloads and clears nothing.
    - The scope line drops to the drive name until the new N arrives.
    - A response to a request made under the previous target is discarded wherever it
      lands: months, days, a list page, a preview, points and the page's count read.
@@ -138,7 +149,9 @@ Look-up: running (no photo request, the button reads `…`), done. Transitions:
 - when the list arrives after a failure, the saved folder takes effect as a target change,
   unless the viewer chose a target since; a choice made in this page wins over the stored
   id, also when storage refused to save it;
-- any target → any other target by a target change (8).
+- any target → any other target by a target change (8);
+- a target saved in another tab or window does not change an open page; it applies on
+  the page's next load.
 
 ### 4. Data read and written
 
@@ -227,8 +240,8 @@ request; no cache.
   identity, so a change reloads rather than refreshes): pass the target to their requests,
   clear what the previous target drew, and drop answers for a previous target.
 - `frontend/lib/savedState.ts`: the target id the state was saved under.
-- `frontend/useWide.ts`, `frontend/useWide.test.tsx`: the `Frame` no longer needs the
-  wrapper's width to place the tabs; removed if nothing else uses it.
+- `frontend/PhotoDiaryPage.tsx` `Frame`: no longer measures its width to place the tabs;
+  `useWide` itself stays (the views use it).
 - `frontend/messages/{ja,en}.json`: the four strings.
 - Tests: backend tests for the parameters, `none` and 422; frontend tests; e2e under
   `e2e/`, including `e2e/pageSupport.ts` (stubs for the two core reads) and
@@ -286,14 +299,27 @@ I11. The backend answers 422 to `none=true` sent with any target parameter, trea
 `none=false` as absent, and answers 400, not 500 or an empty result, to a target parameter
 the core cannot normalise.
 
-I12. On a wide layout the map's stage reaches the viewport's bottom and is at least `24rem`
-tall, measured in a real browser.
+I12. The map's stage reaches the viewport's bottom and is at least `24rem` tall, measured in
+a real browser at 375px, at 768px and at 1280px with the sidebar shown (the header switches
+at a 640px viewport; the views' own layouts switch at a 48rem element width).
+
+I13. A target chosen in Photo Diary on a drive is the target in force on the next load of
+that drive; within the page, the viewer's choice stays in force even when storage refuses
+to save it.
+
+I14. From a target change on, no count, tint, preview, list item, pin, pin list or N of the
+previous target is on screen, including while the new answers load and after one of them
+fails; this names the open day or "No capture date" list and the map's pins in particular.
+
+I15. After a target change, an open "No capture date" list closes when the new target has
+no undated photo, a URL with no month shows the new target's newest month, and an open day
+list stays open even when that day has no photo under the new target.
 
 ## Revises
 
 SPEC-PD-001 I3. Every photo under the target in force appears in exactly one day list or in the undated list, and the counts in `/calendar/months` and `/calendar/days` equal the `total` of the matching `/photos` query with the same target.
 
-SPEC-PD-001 I6. Going back from a photo restores the view, month, day or map position and open list it was opened from, unless they were saved under another target than the one in force; state saved on one drive is never restored on another, and a response for a month, drive or target the viewer has left is discarded.
+SPEC-PD-001 I6. Going back from a photo restores the view, month, day, map position and open list it was opened from, except that the open list's position and the pin list are dropped when they were saved under another target than the one in force; state saved on one drive is never restored on another, and a response for a month, drive or target the viewer has left is discarded.
 
 SPEC-PD-008 I3. The fade runs when another month is drawn on screen by the viewer's navigation, or on the first draw of a page loaded with no query, and never under reduced motion; a refresh, a re-read of the same month, a target change, pressing a day, returning to the same month from the map and a page loaded with a query draw the surfaces at once.
 
