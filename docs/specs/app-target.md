@@ -18,14 +18,16 @@ photos. This change gives Photo Diary the same header and Target as the core's a
   target. Daily notes do not: a note belongs to its date, so its mark, its month and the
   note in a day's panel stay whatever the target. The choice is shared by Calendar and Map
   and remembered per drive.
-- **SPEC-PD-017**: the header. Photo Diary draws the core's `AppHeader`: the Target button
-  sits at the title row's right end, and the Calendar / Map tabs move to the tabs row under
-  the title at every width, where the core's apps put their tabs. This replaces the
+- **SPEC-PD-017**: the header. Photo Diary draws the core's `AppHeader`, with the quiet
+  Target the core's SPEC-CORE-099 introduces for every app (title row's right end on a wide
+  layout, end of the scope line on a phone), and the Calendar / Map tabs move to the tabs
+  row under the title at every width, where the core's apps put their tabs. This replaces the
   wide-layout placement in `ui-polish.md` (SPEC-PD-012), which put the tabs at the title
   row's right end. That placement has no invariant line in SPEC-PD-012; the new placement
   is I10 here.
 
-**Order.** It needs the core change `docs/specs/addon-app-header.md` (SPEC-ADDON-106) in
+**Order.** It needs the core change `docs/specs/addon-app-header.md` (SPEC-ADDON-106 and
+SPEC-CORE-099) in
 the core repository: the addon app key, `resolveAppTarget`, `readAppTarget` /
 `writeAppTarget`, and `filtered_drive_files` on the documented import surface. The two
 specs are approved together; the core change merges to the core's `develop` first,
@@ -43,9 +45,11 @@ change to the map's style or the calendar's layout beyond the header.
 
 1. The viewer opens `/drive/{drive}/addons/photo_diary`. The header is the core's
    `AppHeader`: the `Images` icon tile, the title フォトダイアリー / Photo Diary, the scope
-   line `<drive> · N枚` / `<drive> · N photos`, and the **対象 / Target** button at the
-   right end of the title row. Under the title, at every width, the tabs row holds
-   カレンダー / Calendar and 地図 / Map (`PageTabs`, as today).
+   line `<drive> · N枚` / `<drive> · N photos`, and the quiet Target control, laid out as
+   the core's SPEC-CORE-099 says: at 640px and wider at the right end of the title row;
+   below 640px the title is alone on its row and the Target sits at the end of the scope
+   line. Under the header, at every width, the tabs row holds カレンダー / Calendar and
+   地図 / Map (`PageTabs`, as today).
 2. N is the number of photos under the target: the sum of `/calendar/months` counts plus
    `undated_count`, as today. While it is unknown the scope line shows the drive name
    alone.
@@ -62,7 +66,8 @@ change to the map's style or the calendar's layout beyond the header.
    - While the list loads and a non-default id is saved, no photo request goes out. The
      look-up ends when the list loads or fails; on a failure the default target is used at
      once.
-5. The Target button reads the target's name: すべての写真 / All photos for the default
+5. The Target control reads the target's name (the word 対象 / Target is its accessible
+   name, not drawn): すべての写真 / All photos for the default
    target (including every fallback in 4), or the smart folder's name; `…` only while the
    look-up of 4 is running. Pressing it opens the core's `TargetMenu` with
    `app = { addon: "photo_diary" }`, `defaultTargetTypes = ["image"]`, `selectedId` = the
@@ -180,18 +185,25 @@ As in 2. Nothing new is logged.
 - Header as in 1. On a wide layout the tabs are now under the title, so the map's stage
   is one tabs row shorter; it still fills to the viewport's bottom and keeps its `24rem`
   minimum.
-- Strings: 対象 / Target, すべての写真 / All photos, この対象は使えません / This target
+- Strings: 対象 / Target (the menu's label and the control's accessible name, not drawn on
+  the control), すべての写真 / All photos, この対象は使えません / This target
   cannot be used, and the count `N枚` / `N photo(s)` in the scope line.
 - A day with notes and no photos under the target keeps its mark and stays pressable.
-- Design: the header and the Target menu are the core's, as agreed for the core's Reading
-  app; its artboards are copied to `docs/reviews/app-target/design/` (`Main.dc.html` for
-  the header, `Target-Menu.dc.html`, `Target-Manage.dc.html`, `canvas.json`; from the
-  core's `docs/process/reviews/fix-reading-app-design/design/`, no artifact URL recorded
-  there). Checkable lines, against that
-  design with Photo Diary's icon, title and tabs:
-  - the title row: icon tile, title, scope line, Target button at the right end;
-  - the tabs row under it, at every width: Calendar, Map;
+- Design: agreed with the user, https://claude.ai/artifact/3DhNVLqgN9R2mCaj2aNxii, saved
+  in `docs/reviews/app-target/design/` (`Main.dc.html` wide calendar, `Map.dc.html` wide
+  map, `Phone.dc.html` 375px default target, `Phone-Long.dc.html` 375px long folder name;
+  `Target-Menu.dc.html` and `Target-Manage.dc.html` are the core Reading app's menu,
+  unchanged). The same files are in the core's
+  `docs/process/reviews/feature-addon-app-header/design/`. Checkable lines:
+  - wide: title row = icon tile, title over scope line, quiet Target at the right end;
+    tabs row under it with Calendar and Map;
+  - 375px: title alone and whole on its row; scope text at the start and the quiet Target
+    at the end of the line under it; tabs row under that;
+  - 375px, long folder name: the name ends in an ellipsis inside the Target;
+  - the Target draws no 対象 label and no fill;
   - the Target menu: default row with its count, the shown folders, Manage….
+  Declared differences: the calendar's cells, the map and the pins are illustrative; the
+  calendar and the map keep today's look.
 
 ### 10. Non-functional
 
@@ -266,7 +278,9 @@ what is on screen, the open pin list is closed, and no list position or pin list
 before the change is restored.
 
 I10. On the normal page, at every width, the Calendar and Map tabs are in the header's
-tabs row and the title row's right end holds the Target button.
+tabs row; at 640px and wider the Target is at the title row's right end; below 640px the
+title フォトダイアリー is whole on its own row and the Target is at the end of the scope line,
+also with a long folder name as the target (measured at 375px in a real browser).
 
 I11. The backend answers 422 to `none=true` sent with any target parameter, treats
 `none=false` as absent, and answers 400, not 500 or an empty result, to a target parameter
