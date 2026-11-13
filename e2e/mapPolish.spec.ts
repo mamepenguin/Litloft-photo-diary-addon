@@ -235,10 +235,17 @@ test.describe("SPEC-PD-011: a pin is a photo with a count badge", () => {
     await page.mouse.move(box.x + 640, box.y + 480);
     await page.mouse.down();
     await page.mouse.move(box.x + 640 + 100, box.y + 480, { steps: 6 });
+    // MapLibre gives a drag inertia from the moves of its last 160 ms; holding
+    // still first keeps the map where the mouse left it, so the zoom below
+    // keeps both pins in view.
+    await page.waitForTimeout(300);
+    const views = h.views.length;
     await page.mouse.up();
-    await expect.poll(async () => Math.round((await centreOf("3 photos")).x - right.x)).toBeGreaterThan(90);
-    expect(Math.abs((await centreOf("3 photos")).x - right.x - 100)).toBeLessThan(6);
-    expect(Math.abs((await centreOf("2 photos")).x - left.x - 100)).toBeLessThan(6);
+    await expect.poll(() => h.views.length).toBeGreaterThan(views);
+    const moved = (A[0] - h.views[h.views.length - 1].center[0]) * ((512 * 2 ** 12) / 360);
+    expect(Math.abs(moved - 100)).toBeLessThan(2);
+    expect(Math.abs((await centreOf("3 photos")).x - right.x - moved)).toBeLessThan(2);
+    expect(Math.abs((await centreOf("2 photos")).x - left.x - moved)).toBeLessThan(2);
 
     const gap = (await centreOf("3 photos")).x - (await centreOf("2 photos")).x;
     await zoomInAtCentre(page);
