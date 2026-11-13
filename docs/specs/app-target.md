@@ -66,8 +66,9 @@ change to the map's style or the calendar's layout beyond the header.
    - While the list loads and a non-default id is saved, no photo request goes out. The
      look-up ends when the list loads or fails; on a failure the default target is used at
      once.
-5. The Target control reads the target's name (the word 対象 / Target is its accessible
-   name, not drawn): すべての写真 / All photos for the default
+5. The Target control reads the target's name (the word 対象 / Target is not drawn; the
+   control's accessible name is `<label>: <name>`, `対象: すべての写真` for example, and
+   `対象: …` during the look-up): すべての写真 / All photos for the default
    target (including every fallback in 4), or the smart folder's name; `…` only while the
    look-up of 4 is running. Pressing it opens the core's `TargetMenu` with
    `app = { addon: "photo_diary" }`, `defaultTargetTypes = ["image"]`, `selectedId` = the
@@ -86,8 +87,12 @@ change to the map's style or the calendar's layout beyond the header.
    - A target that resolves to empty (its kinds hold no image) sends `none=true` alone.
    - The backend answers 422 when `none=true` arrives with any target parameter.
      `none=false` is the same as no `none`.
-   - The photo routes declare `search` with at most 200 characters, as the core's listing
-     does, and answer 422 above that; the page shows it as it shows a 400.
+   - The photo routes declare exactly these target parameters: `search` (at most 200
+     characters, 422 above that, shown by the page as it shows a 400), `tag`, `folder`,
+     `collection`, `size` (each repeatable), `favorite` and `liked` (booleans with the
+     listing's meaning; the page sends only `true`), and `none` (boolean). Any other query
+     parameter is ignored, as FastAPI does. For the 422 with `none=true`, a parameter
+     counts as present when it is given with any value except an empty `search`.
 7. The backend narrows its photo set to the ids of `filtered_drive_files(db, drive,
    type=["image"], ...)` with those parameters, so a target gives the same images as the
    core's listing `GET /api/drives/{drive}/files?type=image&...`. With `none=true` it counts
@@ -119,6 +124,10 @@ change to the map's style or the calendar's layout beyond the header.
      held until then anyway). On a mismatch the list position, its view and the pin list
      are dropped; the map's centre and zoom are restored either way. This also covers a
      target changed in another tab.
+   - The page's in-place fresh start (a URL with no query reached while the page stays
+     mounted) keeps the target in force and the loaded folder list; it is not a next load.
+   - The second read that daily notes make after returning from the editor starts its
+     clock when the look-up of 4 ends; `/note` is not a photo request and is never held.
    - Every choice in the menu is saved with `writeAppTarget`. A choice that leaves the
      target in force as it is (choosing it again, or choosing the default while a saved
      folder falls back to it) reloads and clears nothing.
@@ -128,8 +137,8 @@ change to the map's style or the calendar's layout beyond the header.
 
 ### 2. Failure cases
 
-- The smart folder list fails to load: the menu shows its retry, as in the core's apps,
-  and the page uses the default target (4). A retry that loads the list applies the saved
+- The smart folder list fails to load: the menu lists the default row and Manage…, and
+  Manage… offers the retry, as in the core's apps; the page uses the default target (4). A retry that loads the list applies the saved
   folder as a target change (8).
 - The saved folder no longer exists or is unusable: the default target (4).
 - A target parameter the core cannot normalise answers 400: each view shows its existing
@@ -216,12 +225,15 @@ As in 2. Nothing new is logged.
   - the Target draws no 対象 label and no fill;
   - the Target menu: default row with its count, the shown folders, Manage….
   Declared differences: the calendar's cells, the map and the pins are illustrative; the
-  calendar and the map keep today's look.
+  calendar and the map keep today's look. `Shelf-B.dc.html` is the core's shelf page
+  (SPEC-CORE-099) and does not apply to Photo Diary.
 
 ### 10. Non-functional
 
 Sized as today for up to 50,000 photos per drive. A target adds one subquery to each
-request; no cache.
+request; no cache. `photo-diary.md`'s bound still holds under a target: `/calendar/*`,
+`/photos` and `/points` each answer within 1 second at 50,000 photos with a target
+carrying `search`, `tag`, `folder` and `size`, measured once before merge.
 
 ## Touch points
 
@@ -286,9 +298,8 @@ while a non-default saved target is being looked up no photo request is sent.
 I8. A target change made in one drive does not change the target of another drive, and a
 choice made in Photo Diary does not change the target of the core's Video or Reading app.
 
-I9. After a target change, no answer to a request made under the previous target changes
-what is on screen, the open pin list is closed, and no list position or pin list saved
-before the change is restored.
+I9. After a target change the open pin list is closed, and no list position or pin list
+saved before the change is restored.
 
 I10. On the normal page, at every width, the Calendar and Map tabs are in the header's
 tabs row; at 640px and wider the Target is at the title row's right end; below 640px the
@@ -307,13 +318,18 @@ I13. A target chosen in Photo Diary on a drive is the target in force on the nex
 that drive; within the page, the viewer's choice stays in force even when storage refuses
 to save it.
 
-I14. From a target change on, no count, tint, preview, list item, pin, pin list or N of the
+I14. From a target change on, including when an answer to a request made under the
+previous target arrives late, no count, tint, preview, list item, pin, pin list or N of the
 previous target is on screen, including while the new answers load and after one of them
 fails; this names the open day or "No capture date" list and the map's pins in particular.
 
 I15. After a target change, an open "No capture date" list closes when the new target has
 no undated photo, a URL with no month shows the new target's newest month, and an open day
 list stays open even when that day has no photo under the new target.
+
+I16. The Target control's text and the menu's checked row always name the target in
+force: すべての写真 for the default and for every fallback of item 4, the folder's name
+otherwise, `…` only while the look-up runs.
 
 ## Revises
 
