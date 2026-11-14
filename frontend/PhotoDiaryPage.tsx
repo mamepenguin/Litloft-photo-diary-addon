@@ -33,6 +33,7 @@ import { fetchMonths } from "./api";
 import { isNotFound } from "./lib/errors";
 import { photoTotal } from "./lib/total";
 import { useTarget } from "./useTarget";
+import { useLastScrollY } from "./useLastScrollY";
 import { PAGE_SIZE } from "./usePagedPhotos";
 
 type View = PageUrl["view"];
@@ -148,6 +149,7 @@ function Session({ drive }: { drive: string }) {
   const savedTarget = initial.saved.target ?? "default";
 
   const saved = useRef<SavedState>(initial.saved);
+  const lastScrollY = useLastScrollY();
   const calendarList = useRef<ListPosition | null>(null);
   const mapList = useRef<ListPosition | null>(null);
   const libraryPages = useRef(0);
@@ -197,7 +199,7 @@ function Session({ drive }: { drive: string }) {
       if (libraryPages.current > 0) {
         state.library = {
           loaded: libraryPages.current,
-          scrollY: window.scrollY,
+          scrollY: lastScrollY.current,
           by: byRef.current,
           sort: sortRef.current,
         };

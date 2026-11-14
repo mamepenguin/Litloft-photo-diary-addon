@@ -30,6 +30,7 @@ import { LoadError } from "./LoadError";
 import { SortMenu } from "./LibraryControls";
 import { usePagedPhotos } from "./usePagedPhotos";
 import { useTarget } from "./useTarget";
+import { useLastScrollY } from "./useLastScrollY";
 
 export default function ShelfPage() {
   const drive = useCurrentDrive();
@@ -143,6 +144,7 @@ function Session({
   });
   const [monthsToken, setMonthsToken] = useState(0);
   const loaded = useRef(0);
+  const lastScrollY = useLastScrollY();
   const listKey = `${link.by}|${link.key}|${link.sort}|${target.changes}`;
   const listKeyRef = useRef(listKey);
   listKeyRef.current = listKey;
@@ -193,7 +195,7 @@ function Session({
       sort: link.sort,
       target: targetRef.current,
       loaded: loaded.current,
-      scrollY: window.scrollY,
+      scrollY: lastScrollY.current,
     });
   }, [drive, link.by, link.key, link.sort]);
 
