@@ -15,7 +15,6 @@ import Page from "./Page";
 import * as mapModule from "./map/createPhotoMap";
 import { saveState } from "./lib/savedState";
 import { readAppTarget, writeAppTarget } from "@/lib/appPrefs";
-import { resolveAppTarget } from "@/lib/appTarget";
 import type { SmartFolder } from "@/types/smartFolder";
 
 const h = vi.hoisted(() => ({
@@ -24,7 +23,7 @@ const h = vi.hoisted(() => ({
   observers: new Set<{ callback: IntersectionObserverCallback }>(),
   scroll: { calls: [] as number[] },
   mapOptions: { current: null as null | Record<string, any> },
-  handles: [] as { setPoints: any }[],
+  handles: [] as { setPoints: any; destroy: any }[],
 }));
 
 vi.mock("next-intl", async () => await vi.importActual("next-intl"));
@@ -140,14 +139,17 @@ const DURATION = folder("sf-long", "Long ones", "duration:>1m");
 const BAD = folder("sf-bad", "Broken", "tag:bad");
 const FOLDERS = [TRIP, FULL, VIDEOS, NEGATED, DURATION, BAD];
 
-const fullParams = (() => {
-  const t = resolveAppTarget(FULL, ["image"]);
-  if (!t.usable || !("params" in t) || t.params === null) throw new Error("FULL must resolve usable");
-  const { type: _type, ...rest } = t.params as Record<string, unknown>;
-  return Object.fromEntries(
-    Object.entries(rest).filter(([, v]) => v !== undefined && v !== null && v !== false && v !== "" && !(Array.isArray(v) && v.length === 0)),
-  );
-})();
+// Pinned literally rather than resolved, so a resolver change cannot shrink
+// the expectation along with the page.
+const FULL_WIRE: Record<string, string[]> = {
+  search: ["beach"],
+  tag: ["trip"],
+  folder: ["Photos"],
+  collection: ["Album"],
+  size: ["gt:10485760"],
+  favorite: ["true"],
+  liked: ["true"],
+};
 
 // ---------------------------------------------------------------- the server
 
@@ -207,6 +209,12 @@ let overrides: { match: (r: Req) => boolean; respond: (r: Req) => Response | Pro
 const targetOf = (q: URLSearchParams) =>
   Object.fromEntries(TARGET_KEYS.filter((k) => q.has(k)).map((k) => [k, q.getAll(k)]));
 
+function sameWire(actual: Record<string, string[]>, expected: Record<string, string[]>): boolean {
+  const keys = Object.keys(actual);
+  if (keys.length !== Object.keys(expected).length) return false;
+  return keys.every((key) => expected[key] !== undefined && actual[key].join("\n") === expected[key].join("\n"));
+}
+
 function libraryKey(r: Req): string | null {
   const t = targetOf(r.query);
   const keys = Object.keys(t);
@@ -214,7 +222,7 @@ function libraryKey(r: Req): string | null {
   if (keys.length === 1 && t.none?.[0] === "true") return "none";
   if (keys.length === 1 && t.tag?.length === 1 && t.tag[0] === "trip") return "trip";
   if (keys.length === 1 && t.tag?.[0] === "bad") return "bad";
-  if (t.search?.[0] === "beach") return "full";
+  if (sameWire(t, FULL_WIRE)) return "full";
   return null;
 }
 
@@ -545,10 +553,7 @@ describe("SPEC-PD-016 item 6: the wire contract", () => {
     await flush();
     const paths = new Set(photoReads().map((r) => r.path));
     expect([...paths].sort()).toEqual([...PHOTO_PATHS].sort());
-    const expected = Object.fromEntries(
-      Object.entries(fullParams).map(([k, v]) => [k, Array.isArray(v) ? v.map(String) : [String(v)]]),
-    );
-    for (const r of photoReads()) expect(targetOf(r.query)).toEqual(expected);
+    for (const r of photoReads()) expect(targetOf(r.query)).toEqual(FULL_WIRE);
   });
 
   it("SPEC-PD-016 I4 a folder that holds no image sends none=true alone, and its notes still show", async () => {
@@ -558,7 +563,8 @@ describe("SPEC-PD-016 item 6: the wire contract", () => {
     const noted = await day("8月20日、メモあり");
     expect(noted).not.toBeDisabled();
     await click(tab("地図"));
-    await waitFor(() => expect(mapModule.createPhotoMap).toHaveBeenCalled());
+    await screen.findByText("位置情報のある写真はありません");
+    expect(mapModule.createPhotoMap).not.toHaveBeenCalled();
     await flush();
     expect(photoReads().length).toBeGreaterThan(0);
     for (const r of photoReads()) expect(targetOf(r.query)).toEqual({ none: ["true"] });
@@ -668,6 +674,59 @@ describe("SPEC-PD-016 item 8: a target change", () => {
     expect(headerText()).not.toContain("113枚");
   });
 
+  it("SPEC-PD-016 item 8 a change sends the months once, and the drive name is alone until the new N", async () => {
+    await settled("?month=2026-10");
+    await waitFor(() => expect(headerText()).toContain("family · 113枚"));
+    const before = requests.length;
+    const release = hold((r) => r.path === `${BASE}/calendar/months` && libraryKey(r) === "trip");
+    await choose("すべての写真", "Trip");
+    expect(headerText()).not.toMatch(/family\s*·/);
+    await release();
+    await waitFor(() => expect(headerText()).toContain("family · 2枚"));
+    const months = requests
+      .slice(before)
+      .filter((r) => r.path === `${BASE}/calendar/months` && libraryKey(r) === "trip");
+    expect(months).toHaveLength(1);
+  });
+
+  it("SPEC-PD-016 I14 a months answer for the previous target cannot blank the new target's N", async () => {
+    const releaseOld = hold((r) => r.path === `${BASE}/calendar/months` && libraryKey(r) === "default");
+    await settled("?month=2026-10");
+    await choose("すべての写真", "Trip");
+    await waitFor(() => expect(headerText()).toContain("family · 2枚"));
+    await releaseOld();
+    await flush();
+    expect(headerText()).toContain("family · 2枚");
+  });
+
+  it("SPEC-PD-016 item 8 a map read that fails after a change draws the map again on retry, at the same centre and zoom", async () => {
+    await settled("?view=map");
+    await waitFor(() => expect(h.mapOptions.current).not.toBeNull());
+    await act(async () => void h.mapOptions.current!.onViewChange([10, 20], 8));
+    const first = h.handles[0];
+    answer((r) => r.path === `${BASE}/points` && libraryKey(r) === "trip", () => json({ detail: "x" }, 500));
+    await choose("すべての写真", "Trip");
+    await screen.findByText("読み込めませんでした");
+    expect(first.destroy).toHaveBeenCalled();
+    await click(screen.getByRole("button", { name: "再試行" }));
+    await waitFor(() => expect(mapModule.createPhotoMap).toHaveBeenCalledTimes(2));
+    expect(h.mapOptions.current!.center).toEqual([10, 20]);
+    expect(h.mapOptions.current!.zoom).toBe(8);
+    expect(JSON.stringify(h.mapOptions.current!.points)).toContain("t0");
+  });
+
+  it("SPEC-PD-016 I4 an empty target shows no-located state, and the next target with pins is fitted", async () => {
+    writeAppTarget("family", APP, VIDEOS.id);
+    await settled("?view=map");
+    await targetButton("Videos");
+    await screen.findByText("位置情報のある写真はありません");
+    expect(mapModule.createPhotoMap).not.toHaveBeenCalled();
+    await choose("Videos", "Trip");
+    await waitFor(() => expect(mapModule.createPhotoMap).toHaveBeenCalledTimes(1));
+    expect(h.mapOptions.current!.center).toBeUndefined();
+    expect(JSON.stringify(h.mapOptions.current!.points)).toContain("t0");
+  });
+
   it("SPEC-PD-016 I15 an open undated list closes when the new target has no undated photo", async () => {
     await settled("?month=2026-10&undated=true");
     await waitFor(() => expect(renderedIds()).toEqual(["u0", "u1", "u2"]));
@@ -742,7 +801,10 @@ describe("SPEC-PD-016 item 8: a target change", () => {
     await settled("?month=2026-10");
     await day("10月3日 5枚");
     await choose("すべての写真", "Trip");
-    await day("9月2日 2枚");
+    await waitFor(() => expect(headerText()).toContain("family · 2枚"));
+    await flush();
+    expect(screen.getByRole("heading", { name: "2026年10月" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "9月2日 2枚" })).toBeNull();
     const reads = folderReads();
     const before = requests.length;
     await act(async () => void window.history.pushState(null, "", "/drive/family/addons/photo_diary"));
@@ -800,7 +862,39 @@ describe("SPEC-PD-016: a smart folder list read again after a failure", () => {
 
 // ---------------------------------------------------------------- saved state (016 item 8, I9)
 
-describe("SPEC-PD-016 I9: state saved under another target", () => {
+describe("SPEC-PD-016 I9: state saved under a target", () => {
+  it("SPEC-PD-016 a list position saved under the folder in force is restored under it", async () => {
+    writeAppTarget("family", APP, TRIP.id);
+    saveState("family", { list: { loaded: 80, scrollY: 640 }, listView: "calendar", target: TRIP.id });
+    await settled("?month=2026-09&date=2026-09-02");
+    await targetButton("Trip");
+    await waitFor(() => expect(renderedIds()).toEqual(["t0", "t1"]));
+    await waitFor(() => expect(h.scroll.calls).toContain(640));
+    const read = requests.find(
+      (r) => r.path === `${BASE}/photos` && libraryKey(r) === "trip" && r.query.get("date") === "2026-09-02",
+    );
+    expect(read?.query.get("limit")).toBe("80");
+  });
+
+  it("SPEC-PD-016 a pin list and its position saved under the folder in force are restored under it", async () => {
+    writeAppTarget("family", APP, TRIP.id);
+    saveState("family", {
+      zoom: 7,
+      center: [1, 2],
+      pointIds: ["t0"],
+      list: { loaded: 40, scrollY: 120 },
+      listView: "map",
+      target: TRIP.id,
+    });
+    await settled("?view=map");
+    await targetButton("Trip");
+    await waitFor(() => expect(h.mapOptions.current).not.toBeNull());
+    expect(h.mapOptions.current!.center).toEqual([1, 2]);
+    expect(h.mapOptions.current!.zoom).toBe(7);
+    await waitFor(() => expect(renderedIds()).toEqual(["t0"]));
+    await waitFor(() => expect(h.scroll.calls).toContain(120));
+  });
+
   it("SPEC-PD-016 a list position saved before this change is not restored under a folder target", async () => {
     writeAppTarget("family", APP, FULL.id);
     saveState("family", { list: { loaded: 80, scrollY: 640 } });
@@ -855,7 +949,10 @@ describe("SPEC-PD-016 I1: a target change made while the other view was hidden",
     await settled("?month=2026-10");
     await day("10月3日 5枚");
     await choose("すべての写真", "Trip");
-    await day("9月2日 2枚");
+    await waitFor(() => expect(headerText()).toContain("family · 2枚"));
+    await flush();
+    expect(screen.getByRole("heading", { name: "2026年10月" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "9月2日 2枚" })).toBeNull();
     const from = requests.length;
     await click(tab("地図"));
     await waitFor(() => expect(mapModule.createPhotoMap).toHaveBeenCalled());
