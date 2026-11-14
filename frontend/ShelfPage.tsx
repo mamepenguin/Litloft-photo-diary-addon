@@ -286,7 +286,8 @@ function Session({
         />
       }
     >
-      <div className="px-4 pb-6 pt-4 sm:pb-8">
+      {/* The header's 8px bottom padding plus 4px under the phone's sort row is the design's gap. */}
+      <div className="px-4 pb-6 pt-4 max-sm:-mt-1 max-sm:pt-0 sm:pb-8">
         {target.ready ? (
           <ShelfPhotos
             drive={drive}
