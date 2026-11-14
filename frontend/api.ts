@@ -121,6 +121,50 @@ export function fetchPoints(drive: string, target?: TargetParams) {
   return get<{ points: Point[] }>(drive, "/points", targetQuery(target));
 }
 
+type ShelfBody = { key: string; label: string; count: number; file_ids: string[] };
+
+export function fetchShelves(
+  drive: string,
+  query: {
+    target: TargetParams | null;
+    by: string;
+    sort: string;
+    per_shelf: number;
+    shelf_limit: number;
+    offset: number;
+  },
+) {
+  return get<{ shelves: ShelfBody[]; total_shelves: number }>(drive, "/library/shelves", {
+    ...targetQuery(query.target),
+    by: query.by,
+    sort: query.sort,
+    per_shelf: String(query.per_shelf),
+    shelf_limit: String(query.shelf_limit),
+    offset: String(query.offset),
+  });
+}
+
+export function fetchShelf(
+  drive: string,
+  query: {
+    target: TargetParams | null;
+    by: string;
+    key: string;
+    sort: string;
+    limit: number;
+    offset: number;
+  },
+) {
+  return get<{ file_ids: string[]; total: number; label: string }>(drive, "/library/shelf", {
+    ...targetQuery(query.target),
+    by: query.by,
+    key: query.key,
+    sort: query.sort,
+    limit: String(query.limit),
+    offset: String(query.offset),
+  });
+}
+
 export function fetchMapConfig(drive: string) {
   return get<{ tile_url: string; attribution: string }>(drive, "/map-config");
 }

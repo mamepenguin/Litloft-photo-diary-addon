@@ -51,7 +51,7 @@ type Props = {
   onNotAvailable: () => void;
   /** The answer's total and the target token its request was made under. */
   onTotal: (total: number, changes: number) => void;
-  /** The page was opened with no query, so the first month drawn fades in. */
+  /** The page was opened on `?view=calendar` alone, so the first month drawn fades in. */
   freshStart: boolean;
 };
 
@@ -168,7 +168,8 @@ export function CalendarView({
       ? "undated"
       : null;
 
-  // `go` drops the view from the URL, so only the view on screen may call it.
+  // Only the view on screen may rewrite the URL, so a hidden face cannot take
+  // the address away from the one that is drawn.
   useEffect(() => {
     if (active && months !== null && url.undated && undatedCount === 0) go("replace", { month: url.month });
   }, [active, months, url.undated, url.month, undatedCount, go]);

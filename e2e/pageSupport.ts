@@ -47,6 +47,21 @@ export async function serveApi(page: Page) {
     route.fulfill(json({ tile_url: TILE_URL, attribution: "" })),
   );
   await page.route("**/api/addons/photo_diary/note*", (route) => route.fulfill(json({ state: "none", file_id: null })));
+  await page.route("**/api/addons/photo_diary/library/shelves*", (route) => {
+    const offset = Number(new URL(route.request().url()).searchParams.get("offset") ?? 0);
+    const shelves =
+      offset > 0
+        ? []
+        : MONTHS.slice(0, 4).map((key) => ({ key, label: "", count: 5, file_ids: ids(`${key}-`, 5) }));
+    route.fulfill(json({ shelves, total_shelves: 4 }));
+  });
+  await page.route("**/api/addons/photo_diary/library/shelf*", (route) => {
+    const q = new URL(route.request().url()).searchParams;
+    const offset = Number(q.get("offset") ?? 0);
+    const limit = Number(q.get("limit") ?? 40);
+    const all = ids(`${q.get("key")}-`, 45);
+    route.fulfill(json({ file_ids: all.slice(offset, offset + limit), total: all.length, label: "" }));
+  });
   await page.route("**/api/drives/*/smart-folders", (route) => route.fulfill(json([])));
   await page.route(
     (url) => /\/api\/drives\/[^/]+\/files$/.test(url.pathname),

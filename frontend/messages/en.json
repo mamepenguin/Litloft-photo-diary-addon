@@ -12,10 +12,29 @@
     "tileError": "Map tiles could not be loaded",
     "noWebgl": "The map cannot be shown on this device",
     "view": {
+      "library": "Library",
       "calendar": "Calendar",
       "map": "Map",
       "label": "View"
     },
+    "classification": "Group by",
+    "classifications": {
+      "month": "Month taken",
+      "tag": "Tag",
+      "collection": "Collection",
+      "folder": "Folder"
+    },
+    "sort": {
+      "label": "Sort",
+      "newest": "Newest first",
+      "oldest": "Oldest first"
+    },
+    "seeAll": "See all",
+    "noPhotos": "No photos",
+    "noTag": "No tag",
+    "noCollection": "No collection",
+    "collection": "Collection",
+    "invalidLink": "This link cannot be opened",
     "month": {
       "previous": "Previous month",
       "next": "Next month",
@@ -24,6 +43,8 @@
     "close": "Close",
     "undated": "No capture date",
     "photoCount": "{count, plural, one {# photo} other {# photos}}",
+    "photoCountOne": "{count} photo",
+    "photoCountMany": "{count} photos",
     "target": "Target",
     "allPhotos": "All photos",
     "targetUnavailable": "This target cannot be used",

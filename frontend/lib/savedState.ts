@@ -7,9 +7,21 @@ export type SavedState = {
   listView?: "calendar" | "map";
   /** The target in force when the state was saved; absent counts as `default`. */
   target?: string;
+  /** The Library's loaded depth, scroll and the choice it was recorded under. */
+  library?: { loaded: number; scrollY: number; by: string; sort: string };
+};
+
+export type ShelfState = {
+  by: string;
+  key: string;
+  sort: string;
+  target: string;
+  loaded: number;
+  scrollY: number;
 };
 
 const key = (drive: string) => `photo_diary:state:${encodeURIComponent(drive)}`;
+const shelfKey = (drive: string) => `photo_diary:shelf:${encodeURIComponent(drive)}`;
 
 const isNumber = (value: unknown): value is number => typeof value === "number" && Number.isFinite(value);
 
@@ -30,7 +42,38 @@ function sanitize(raw: unknown): SavedState | null {
   }
   if (r.listView === "calendar" || r.listView === "map") state.listView = r.listView;
   if (typeof r.target === "string") state.target = r.target;
+  const library = r.library as Record<string, unknown> | undefined;
+  if (
+    library &&
+    isNumber(library.loaded) &&
+    isNumber(library.scrollY) &&
+    typeof library.by === "string" &&
+    typeof library.sort === "string"
+  ) {
+    state.library = {
+      loaded: library.loaded,
+      scrollY: library.scrollY,
+      by: library.by,
+      sort: library.sort,
+    };
+  }
   return state;
+}
+
+function sanitizeShelf(raw: unknown): ShelfState | null {
+  if (typeof raw !== "object" || raw === null) return null;
+  const r = raw as Record<string, unknown>;
+  if (
+    typeof r.by !== "string" ||
+    typeof r.key !== "string" ||
+    typeof r.sort !== "string" ||
+    typeof r.target !== "string" ||
+    !isNumber(r.loaded) ||
+    !isNumber(r.scrollY)
+  ) {
+    return null;
+  }
+  return { by: r.by, key: r.key, sort: r.sort, target: r.target, loaded: r.loaded, scrollY: r.scrollY };
 }
 
 /** Never throws: when storage refuses, Back starts fresh. */
@@ -54,6 +97,32 @@ export function loadState(drive: string): SavedState | null {
 export function clearState(drive: string): void {
   try {
     sessionStorage.removeItem(key(drive));
+    sessionStorage.removeItem(shelfKey(drive));
+  } catch {
+    // Nothing to clear.
+  }
+}
+
+export function saveShelfState(drive: string, state: ShelfState): void {
+  try {
+    sessionStorage.setItem(shelfKey(drive), JSON.stringify(state));
+  } catch {
+    // Storage full or blocked.
+  }
+}
+
+export function loadShelfState(drive: string): ShelfState | null {
+  try {
+    const stored = sessionStorage.getItem(shelfKey(drive));
+    return stored === null ? null : sanitizeShelf(JSON.parse(stored));
+  } catch {
+    return null;
+  }
+}
+
+export function clearShelfState(drive: string): void {
+  try {
+    sessionStorage.removeItem(shelfKey(drive));
   } catch {
     // Nothing to clear.
   }
