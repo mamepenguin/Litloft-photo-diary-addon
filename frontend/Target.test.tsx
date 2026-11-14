@@ -590,9 +590,10 @@ describe("SPEC-PD-016 item 5: the Target menu", () => {
       expect(within(menu).getByRole("menuitemradio", { name: new RegExp(f.name) })).not.toBeDisabled();
     }
     for (const f of [NEGATED, DURATION]) {
-      expect(within(menu).getByRole("menuitemradio", { name: new RegExp(f.name) })).toBeDisabled();
+      const row = within(menu).getByRole("menuitemradio", { name: new RegExp(f.name) });
+      expect(row).toBeDisabled();
+      expect(row).toHaveAttribute("title", "この対象は使えません");
     }
-    expect(within(menu).getAllByText("この対象は使えません").length).toBeGreaterThan(0);
     expect(within(menu).getByRole("menuitem", { name: /管理/ })).toBeInTheDocument();
   });
 
