@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useLoad, type LoadState } from "@/components/appshell/useLoad";
 import { getSmartFolders } from "@/lib/api";
 import { readAppTarget, writeAppTarget } from "@/lib/appPrefs";
@@ -80,7 +80,6 @@ export function useTarget(drive: string): Target {
   );
   const resolved = useMemo(() => usableTarget(listed), [listed]);
   const folder = resolved.usable ? listed : null;
-  const empty = resolved.usable && "empty" in resolved;
   const params = useMemo(() => {
     if (listed === null || !resolved.usable) return null;
     if ("empty" in resolved) return { none: true as const };
@@ -88,19 +87,15 @@ export function useTarget(drive: string): Target {
     return Object.keys(wire).length > 0 ? wire : null;
   }, [listed, resolved]);
 
-  const [changes, setChanges] = useState(0);
-  const seen = useRef<string | null>(null);
   const selectedId = folder?.id ?? DEFAULT_ID;
-  useEffect(() => {
-    if (lookingUp) return;
-    if (seen.current === null) {
-      seen.current = selectedId;
-      return;
-    }
-    if (seen.current === selectedId) return;
-    seen.current = selectedId;
-    setChanges((value) => value + 1);
-  }, [lookingUp, selectedId]);
+  // The token moves in the same render as the target, so no render pairs new
+  // params with the old key and the views mount once per change.
+  const [drawn, setDrawn] = useState<{ id: string; changes: number } | null>(null);
+  if (!lookingUp) {
+    if (drawn === null) setDrawn({ id: selectedId, changes: 0 });
+    else if (drawn.id !== selectedId) setDrawn({ id: selectedId, changes: drawn.changes + 1 });
+  }
+  const changes = drawn?.changes ?? 0;
 
   const choose = useCallback(
     (id: string) => {

@@ -49,7 +49,8 @@ type Props = {
   restore: { loaded: number; scrollY: number; target: string } | null;
   onRestored: () => void;
   onNotAvailable: () => void;
-  onTotal: (total: number) => void;
+  /** The answer's total and the target token its request was made under. */
+  onTotal: (total: number, changes: number) => void;
   /** The page was opened with no query, so the first month drawn fades in. */
   freshStart: boolean;
 };
@@ -111,17 +112,10 @@ export function CalendarView({
 
   const nothingDated = months !== null && months.months.length === 0;
   const monthList = useMemo(() => months?.months ?? [], [months]);
-  // A target change can leave the month in the URL with nothing under it. The
-  // URL keeps it, and a calendar with no day open draws the target's newest
-  // month instead, as a fresh load would.
-  const keptMonth =
-    targetKey === 0 ||
-    url.month === null ||
-    url.date !== null ||
-    monthList.some((m) => m.month === url.month)
-      ? url.month
-      : null;
-  const month = months === null ? null : (keptMonth ?? monthList[0]?.month ?? url.month);
+  // The month in the URL is drawn even when the new target has nothing there,
+  // so the screen and the address agree; only a URL with no month takes the
+  // target's newest.
+  const month = months === null ? null : (url.month ?? monthList[0]?.month ?? null);
 
   useEffect(() => {
     if (!active || !ready) return;
@@ -133,7 +127,7 @@ export function CalendarView({
         setMonths(result);
         setMonthsFailed(false);
         report("months", true);
-        onTotal(photoTotal(result));
+        onTotal(photoTotal(result), targetKey);
       },
       (error: unknown) => {
         if (mine !== monthsRequest.current) return;
@@ -142,7 +136,7 @@ export function CalendarView({
         else setMonthsFailed(true);
       },
     );
-  }, [drive, active, ready, target, token, calendarToken, report, onNotAvailable, onTotal]);
+  }, [drive, active, ready, target, targetKey, token, calendarToken, report, onNotAvailable, onTotal]);
 
   useEffect(() => {
     if (!active || !ready || month === null || nothingDated) return;

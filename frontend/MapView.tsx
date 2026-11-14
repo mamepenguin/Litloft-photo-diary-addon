@@ -176,7 +176,7 @@ export function MapView({
           else if (kept !== openIdsRef.current) handlers.current.applyOpenIds(kept);
         }
 
-        if (loaded.points.length === 0 && targetRef.current?.none !== true) {
+        if (loaded.points.length === 0) {
           handle.current?.destroy();
           handle.current = null;
           setTileFailing(false);
@@ -195,7 +195,13 @@ export function MapView({
           unavailable.current = true;
           onNotAvailable();
         } else if (pointsRef.current !== null) setRefreshFailed(true);
-        else setPhase("failed");
+        else {
+          // The failed phase unmounts the stage, so a handle kept here would
+          // draw into a detached node once the retry succeeds.
+          handle.current?.destroy();
+          handle.current = null;
+          setPhase("failed");
+        }
       },
     );
     // `restore` is the page's first-mount state and does not change.

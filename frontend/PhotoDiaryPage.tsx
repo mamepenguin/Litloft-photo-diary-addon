@@ -6,7 +6,6 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useTranslations } from "next-intl";
 import { useCurrentDrive } from "@/components/CurrentDriveProvider";
 import { AppHeader } from "@/components/appshell/AppHeader";
-import type { LoadState } from "@/components/appshell/useLoad";
 import { PageFrame } from "@/components/PageFrame";
 import { PageHeader } from "@/components/PageHeader";
 import { PageTabs } from "@/components/PageTabs";
@@ -19,7 +18,6 @@ import { fetchMonths } from "./api";
 import { isNotFound } from "./lib/errors";
 import { photoTotal } from "./lib/total";
 import { useTarget } from "./useTarget";
-import type { SmartFolder } from "@/types/smartFolder";
 import { PAGE_SIZE } from "./usePagedPhotos";
 
 type View = PageUrl["view"];
@@ -52,44 +50,6 @@ function Frame({
   );
 }
 
-/**
- * The core menu leaves the reason in a disabled row's `title`, which is not
- * read out. This name carries a span that draws it, and the string method
- * keeps the Manage dialog's search on the real name.
- */
-function withReason(name: string, reason: string): string {
-  return {
-    $$typeof: Symbol.for("react.transitional.element"),
-    type: "span",
-    key: null,
-    props: {
-      children: [
-        name,
-        <span key="reason" className="block text-xs text-text-muted">
-          {reason}
-        </span>,
-      ],
-    },
-    _owner: null,
-    _store: {},
-    toLocaleLowerCase: () => name.toLocaleLowerCase(),
-  } as unknown as string;
-}
-
-function menuFolders(
-  folders: LoadState<SmartFolder[]>,
-  isUsable: (folder: SmartFolder) => boolean,
-  reason: string,
-): LoadState<SmartFolder[]> {
-  if (folders.status !== "loaded") return folders;
-  return {
-    ...folders,
-    data: folders.data.map((folder) =>
-      isUsable(folder) ? folder : { ...folder, name: withReason(folder.name, reason) },
-    ),
-  };
-}
-
 function Session({ drive }: { drive: string }) {
   const t = useTranslations("photoDiary");
   const router = useRouter();
@@ -106,10 +66,14 @@ function Session({ drive }: { drive: string }) {
     value: null,
   });
   const total = target.ready && count.changes === target.changes ? count.value : null;
-  const reportTotal = useCallback(
-    (value: number) => setCount({ changes: target.changes, value }),
-    [target.changes],
-  );
+  const changesRef = useRef(target.changes);
+  changesRef.current = target.changes;
+  // An answer carries the token of the render that made its request; one for an
+  // earlier target must not replace or blank the count of the target in force.
+  const reportTotal = useCallback((value: number, changes: number) => {
+    if (changes !== changesRef.current) return;
+    setCount({ changes, value });
+  }, []);
   const [seen, setSeen] = useState({ calendar: url.view === "calendar", map: url.view === "map" });
   useEffect(() => {
     setSeen((current) => (current[url.view] ? current : { ...current, [url.view]: true }));
@@ -319,7 +283,7 @@ function Session({ drive }: { drive: string }) {
             drive,
             app: { addon: "photo_diary" },
             name: target.lookingUp ? null : (target.folder?.name ?? t("allPhotos")),
-            folders: menuFolders(target.folders, target.isUsable, t("targetUnavailable")),
+            folders: target.folders,
             selectedId: target.selectedId,
             currentCount: total,
             label: t("target"),
