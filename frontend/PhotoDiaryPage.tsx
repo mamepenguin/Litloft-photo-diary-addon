@@ -158,14 +158,19 @@ function Session({ drive }: { drive: string }) {
   const ownTarget = useRef<string | null>(null);
 
   // The calendar's parameters are the last calendar URL's, kept while the
-  // Library owns the URL.
+  // Library owns the URL. The view itself is also given that URL, so a hidden
+  // calendar is not redrawn by an address it does not belong to.
   const calendarParams = useRef({
     month: url.view === "calendar" || url.view === "map" ? url.month : null,
     date: url.view === "calendar" || url.view === "map" ? url.date : null,
     undated: url.view === "calendar" || url.view === "map" ? url.undated : false,
   });
+  const calendarUrl = useRef<PageUrl>(
+    initial.view === "library" ? { view: "calendar", month: null, date: null, undated: false } : url,
+  );
   if (url.view !== "library") {
     calendarParams.current = { month: url.month, date: url.date, undated: url.undated };
+    calendarUrl.current = url;
   }
 
   // The fade belongs to a page loaded on `?view=calendar` alone, never to a
@@ -312,6 +317,7 @@ function Session({ drive }: { drive: string }) {
     libraryRestore.current = null;
     libraryPages.current = 0;
     calendarParams.current = { month: null, date: null, undated: false };
+    calendarUrl.current = { view: "calendar", month: null, date: null, undated: false };
     calendarFade.current = false;
     setNotAvailable(false);
     setSeen({ library: true, calendar: false, map: false });
@@ -446,7 +452,7 @@ function Session({ drive }: { drive: string }) {
             key={`${epoch}:${target.changes}`}
             drive={drive}
             active={url.view === "calendar"}
-            url={url}
+            url={url.view === "library" ? calendarUrl.current : url}
             go={go}
             target={target.params}
             targetId={target.selectedId}
