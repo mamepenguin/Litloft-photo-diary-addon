@@ -6,9 +6,11 @@ owns no table and writes nothing.
 
 import os
 import re
+import unicodedata
 from dataclasses import dataclass
 from datetime import date as calendar_date
 from pathlib import Path
+from typing import Literal
 from urllib.parse import unquote
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request
@@ -19,7 +21,15 @@ from sqlalchemy.orm import Session
 import app.config as config
 from app.auth import check_drive_access, get_unlocked_groups
 from app.database import get_db
-from app.models import File, FileExif, active_file_filter
+from app.models import (
+    Collection,
+    CollectionItem,
+    File,
+    FileExif,
+    Tag,
+    active_file_filter,
+    file_tags,
+)
 from app.routers.drives import filtered_drive_files
 
 from .schemas import (
@@ -32,11 +42,14 @@ from .schemas import (
     PhotoIdsResponse,
     Point,
     PointsResponse,
+    ShelfEntry,
+    ShelfResponse,
+    ShelvesResponse,
 )
 
 ADDON_META = {
     "label": "Photo Diary",
-    "description": "Look back at your photos on a calendar and a map.",
+    "description": "Browse your photos as a library, on a calendar and on a map.",
     "scope": "drive",
     "href": "/addons/photo_diary",
     "navigation": {
@@ -208,6 +221,384 @@ def _photo_query(db: Session, drive: str, target: _Target):
 
 def _count(db: Session, query) -> int:
     return db.scalar(select(func.count()).select_from(query.subquery())) or 0
+
+
+# ---------------------------------------------------------------- library
+
+ShelfBy = Literal["month", "tag", "collection", "folder"]
+ShelfSort = Literal["newest", "oldest"]
+
+UNDATED = "undated"
+NO_TAG = "no_tag"
+NO_COLLECTION = "no_collection"
+_MONTH_KEY = re.compile(_MONTH_PATTERN)
+
+_MONTH = func.substr(_DAY, 1, 7)
+_CAPTURE = case((_IS_DATED, FileExif.datetime_original), else_=None)
+
+
+def _dated(column):
+    return case((_IS_DATED, column), else_=None)
+
+
+def _undated(column):
+    return case((_IS_DATED, None), else_=column)
+
+
+def _capture_order(sort: str):
+    """Dated photos by the sort, then undated ones by name in both sorts."""
+    if sort == "oldest":
+        return [
+            _IS_DATED.desc(),
+            _CAPTURE.asc(),
+            File.filename.asc(),
+            File.id.asc(),
+        ]
+    return [
+        _IS_DATED.desc(),
+        _CAPTURE.desc(),
+        _dated(File.filename).desc(),
+        _undated(File.filename).asc(),
+        _dated(File.id).desc(),
+        _undated(File.id).asc(),
+    ]
+
+
+def _text_order(text: str):
+    normalized = unicodedata.normalize("NFC", text)
+    return (normalized.casefold(), normalized, text)
+
+
+def _tag_names(drive: str):
+    return (
+        select(file_tags.c.file_id.label("file_id"), Tag.name.label("name"))
+        .select_from(file_tags.join(Tag, Tag.id == file_tags.c.tag_id))
+        .where(Tag.drive == drive)
+        .subquery()
+    )
+
+
+def _drive_tag_links(drive: str):
+    return (
+        select(file_tags.c.file_id)
+        .select_from(file_tags.join(Tag, Tag.id == file_tags.c.tag_id))
+        .where(Tag.drive == drive)
+    )
+
+
+def _collection_names(drive: str):
+    return (
+        select(
+            CollectionItem.file_id.label("file_id"),
+            Collection.id.label("collection_id"),
+            Collection.name.label("name"),
+        )
+        .join(Collection, Collection.id == CollectionItem.collection_id)
+        .where(Collection.drive == drive)
+        .subquery()
+    )
+
+
+def _drive_collection_links(drive: str):
+    return (
+        select(CollectionItem.file_id)
+        .join(Collection, Collection.id == CollectionItem.collection_id)
+        .where(Collection.drive == drive)
+    )
+
+
+def _folder_base(counts) -> str:
+    """The deepest folder every matching photo lies under, with none at it."""
+    base = ""
+    while base not in counts:
+        children = set()
+        for folder in counts:
+            if base:
+                prefix = f"{base}/"
+                if not folder.startswith(prefix):
+                    return base
+                children.add(folder[len(prefix):].split("/", 1)[0])
+            else:
+                children.add(folder.split("/", 1)[0])
+        if len(children) != 1:
+            return base
+        segment = children.pop()
+        base = f"{base}/{segment}" if base else segment
+    return base
+
+
+def _folder_shelf_key(base: str, folder: str) -> str:
+    if folder == base:
+        return f"{base}/" if base else ""
+    rest = folder[len(base) + 1:] if base else folder
+    segment = rest.split("/", 1)[0]
+    return f"{base}/{segment}" if base else segment
+
+
+def _folder_label(key: str) -> str:
+    folder = key.rstrip("/")
+    return folder.rsplit("/", 1)[-1] if folder else ""
+
+
+def _shelf_filter(by: str, key: str, drive: str):
+    if by == "month":
+        if key == UNDATED:
+            return ~_IS_DATED
+        return and_(_IS_DATED, _MONTH == key)
+    if by == "tag":
+        if key == NO_TAG:
+            return File.id.not_in(_drive_tag_links(drive))
+        return File.id.in_(_drive_tag_links(drive).where(Tag.name == key))
+    if key == NO_COLLECTION:
+        return File.id.not_in(_drive_collection_links(drive))
+    return File.id.in_(_drive_collection_links(drive).where(Collection.id == key))
+
+
+def _shelf_label(by: str, key: str, name: str = "") -> str:
+    if by == "tag":
+        return "" if key == NO_TAG else key
+    if by == "collection":
+        return "" if key == NO_COLLECTION else name
+    if by == "folder":
+        return _folder_label(key)
+    return ""
+
+
+def _dated_order(keys, dates: dict[str, str], sort: str, label) -> list[str]:
+    """Shelves by their capture date, all-undated ones after, ties by label."""
+    keys = list(keys)
+    dated = sorted((key for key in keys if dates.get(key)), key=label)
+    dated.sort(key=lambda key: dates[key], reverse=sort == "newest")
+    undated = sorted((key for key in keys if not dates.get(key)), key=label)
+    return dated + undated
+
+
+def _shelf_ids(
+    db: Session,
+    base,
+    drive: str,
+    by: str,
+    key: str,
+    sort: str,
+    limit: int,
+    offset: int,
+    folder_paths: list[str] | None = None,
+) -> list[str]:
+    if by == "folder":
+        query = base.where(File.folder_path.in_(folder_paths or []))
+    else:
+        query = base.where(_shelf_filter(by, key, drive))
+    return list(
+        db.scalars(query.order_by(*_capture_order(sort)).limit(limit).offset(offset))
+    )
+
+
+def _month_shelves(db: Session, base, sort: str) -> tuple[dict, list[str]]:
+    key_expr = case((_IS_DATED, _MONTH), else_=UNDATED)
+    counts = dict(
+        db.execute(
+            base.with_only_columns(
+                key_expr, func.count(func.distinct(File.id))
+            ).group_by(key_expr)
+        ).all()
+    )
+    months = sorted((key for key in counts if key != UNDATED), reverse=sort == "newest")
+    if UNDATED in counts:
+        months.append(UNDATED)
+    return counts, months
+
+
+def _tag_shelves(db: Session, base, drive: str) -> tuple[dict, list[str]]:
+    names = _tag_names(drive)
+    grouped = base.outerjoin(names, names.c.file_id == File.id)
+    key_expr = func.coalesce(names.c.name, NO_TAG)
+    counts = dict(
+        db.execute(
+            grouped.with_only_columns(
+                key_expr, func.count(func.distinct(File.id))
+            ).group_by(key_expr)
+        ).all()
+    )
+    ordered = sorted(
+        (key for key in counts if key != NO_TAG),
+        key=lambda key: (-counts[key], _text_order(key)),
+    )
+    if counts.get(NO_TAG):
+        ordered.append(NO_TAG)
+    return counts, ordered
+
+
+def _collection_shelves(db: Session, base, drive: str, sort: str):
+    names = _collection_names(drive)
+    grouped = base.outerjoin(names, names.c.file_id == File.id)
+    key_expr = func.coalesce(names.c.collection_id, NO_COLLECTION)
+    rows = db.execute(
+        grouped.with_only_columns(
+            key_expr,
+            func.count(func.distinct(File.id)),
+            func.max(_CAPTURE),
+            func.min(_CAPTURE),
+        ).group_by(key_expr)
+    ).all()
+    counts = {key: count for key, count, _high, _low in rows}
+    dates = {
+        key: (high if sort == "newest" else low)
+        for key, _count, high, low in rows
+    }
+    labels = dict(
+        db.execute(
+            select(Collection.id, Collection.name).where(Collection.drive == drive)
+        ).all()
+    )
+    ordered = _dated_order(
+        (key for key in counts if key != NO_COLLECTION),
+        dates,
+        sort,
+        lambda key: (_text_order(labels.get(key, "")), key),
+    )
+    if NO_COLLECTION in counts:
+        ordered.append(NO_COLLECTION)
+    return counts, ordered, labels
+
+
+def _folder_shelves(db: Session, base, sort: str):
+    """Group the photos' stored folders in Python, where NFC can be applied."""
+    rows = db.execute(
+        base.with_only_columns(
+            File.folder_path,
+            func.count(func.distinct(File.id)),
+            func.max(_CAPTURE),
+            func.min(_CAPTURE),
+        ).group_by(File.folder_path)
+    ).all()
+    counts: dict[str, int] = {}
+    paths: dict[str, list[str]] = {}
+    newest: dict[str, str] = {}
+    oldest: dict[str, str] = {}
+    for path, count, high, low in rows:
+        folder = unicodedata.normalize("NFC", path)
+        counts[folder] = counts.get(folder, 0) + count
+        paths.setdefault(folder, []).append(path)
+        if high is not None:
+            newest[folder] = max(newest.get(folder, high), high)
+        if low is not None:
+            oldest[folder] = min(oldest.get(folder, low), low)
+
+    root = _folder_base(counts)
+    shelf_counts: dict[str, int] = {}
+    shelf_paths: dict[str, list[str]] = {}
+    shelf_newest: dict[str, str] = {}
+    shelf_oldest: dict[str, str] = {}
+    for folder, count in counts.items():
+        key = _folder_shelf_key(root, folder)
+        shelf_counts[key] = shelf_counts.get(key, 0) + count
+        shelf_paths.setdefault(key, []).extend(paths[folder])
+        if folder in newest:
+            shelf_newest[key] = max(shelf_newest.get(key, newest[folder]), newest[folder])
+        if folder in oldest:
+            shelf_oldest[key] = min(shelf_oldest.get(key, oldest[folder]), oldest[folder])
+    dates = shelf_newest if sort == "newest" else shelf_oldest
+    ordered = _dated_order(
+        shelf_counts,
+        dates,
+        sort,
+        lambda key: (_text_order(_folder_label(key)), key),
+    )
+    return shelf_counts, ordered, shelf_paths
+
+
+def _folder_paths(db: Session, base, key: str) -> list[str]:
+    normalized = unicodedata.normalize("NFC", key)
+    exact = normalized[:-1] if normalized.endswith("/") else normalized
+    prefix = f"{exact}/" if normalized and not normalized.endswith("/") else None
+    wanted = []
+    for path in db.scalars(base.with_only_columns(File.folder_path).distinct()):
+        folder = unicodedata.normalize("NFC", path)
+        if folder == exact or (prefix is not None and folder.startswith(prefix)):
+            wanted.append(path)
+    return wanted
+
+
+@router.get("/library/shelves", response_model=ShelvesResponse)
+def library_shelves(
+    by: ShelfBy = Query(...),
+    sort: ShelfSort = Query("newest"),
+    per_shelf: int = Query(12, ge=1, le=20),
+    shelf_limit: int = Query(12, ge=1, le=50),
+    offset: int = Query(0, ge=0),
+    drive: str = Depends(_drive_scope),
+    target: _Target = Depends(_target),
+    db: Session = Depends(get_db),
+):
+    base = _photo_query(db, drive, target)
+    labels: dict[str, str] = {}
+    folder_paths: dict[str, list[str]] = {}
+    if by == "month":
+        counts, ordered = _month_shelves(db, base, sort)
+    elif by == "tag":
+        counts, ordered = _tag_shelves(db, base, drive)
+    elif by == "collection":
+        counts, ordered, labels = _collection_shelves(db, base, drive, sort)
+    else:
+        counts, ordered, folder_paths = _folder_shelves(db, base, sort)
+    page = ordered[offset : offset + shelf_limit]
+    return ShelvesResponse(
+        shelves=[
+            ShelfEntry(
+                key=key,
+                label=_shelf_label(by, key, labels.get(key, "")),
+                count=counts[key],
+                file_ids=_shelf_ids(
+                    db,
+                    base,
+                    drive,
+                    by,
+                    key,
+                    sort,
+                    per_shelf,
+                    0,
+                    folder_paths.get(key),
+                ),
+            )
+            for key in page
+        ],
+        total_shelves=len(ordered),
+    )
+
+
+@router.get("/library/shelf", response_model=ShelfResponse)
+def library_shelf(
+    by: ShelfBy = Query(...),
+    key: str = Query(...),
+    sort: ShelfSort = Query("newest"),
+    limit: int = Query(40, ge=1, le=100),
+    offset: int = Query(0, ge=0),
+    drive: str = Depends(_drive_scope),
+    target: _Target = Depends(_target),
+    db: Session = Depends(get_db),
+):
+    if by != "folder" and not key:
+        raise HTTPException(status_code=422, detail="key is empty")
+    if by == "month" and key != UNDATED and not _MONTH_KEY.match(key):
+        raise HTTPException(status_code=422, detail="month key must be YYYY-MM or undated")
+    base = _photo_query(db, drive, target)
+    if by == "folder":
+        query = base.where(File.folder_path.in_(_folder_paths(db, base, key)))
+        label = _folder_label(key)
+    else:
+        query = base.where(_shelf_filter(by, key, drive))
+        name = ""
+        if by == "collection" and key != NO_COLLECTION:
+            name = db.scalar(
+                select(Collection.name).where(
+                    Collection.drive == drive, Collection.id == key
+                )
+            ) or ""
+        label = _shelf_label(by, key, name)
+    ids = db.scalars(
+        query.order_by(*_capture_order(sort)).limit(limit).offset(offset)
+    ).all()
+    return ShelfResponse(file_ids=list(ids), total=_count(db, query), label=label)
 
 
 # GLOB is case-sensitive and LIKE is not, so `2026-11-01.MD` and a differently
