@@ -4,7 +4,7 @@ SPEC-ID: SPEC-PD-018
 SPEC-ID: SPEC-PD-019
 SPEC-ID: SPEC-PD-020
 
-Approval: sha256:4f2ff347a644538619d8599665b63a4018e4ece57201a7e94f914497450e0f35 Yuichi Senga 2026-11-14
+Approval:
 
 ## Summary
 
@@ -121,7 +121,11 @@ Photo, capture date, undated photo: as `photo-diary.md`. The photo set under a t
    `view=calendar`.
 4. Which face opens is not remembered: a URL with no query always opens the Library.
 5. Faces once shown stay mounted while hidden, as the calendar and the map do today: going
-   Library → Calendar → Library keeps the Library's loaded shelves without a request. A tab
+   Library → Calendar → Library keeps the Library's loaded shelves without a request when
+   nothing was written in between. After a write through the context menu on another face
+   (the calendar's or the map's photo lists), returning to the Library reads again every
+   page of shelves it has loaded, as item 17 does, keeping their number and the scroll
+   position. A tab
    switch does not move the window's scroll, as switching between the calendar and the map
    does today (`scroll: false`). The in-place fresh start (a URL with no query reached
    while the page stays mounted) rebuilds every face, the Library included, from its first
@@ -482,7 +486,9 @@ Library and the shelf page, their loaded depth and scroll position are kept, and
 later page or re-read leaves what was drawn on screen.
 
 I14. Calendar (a month and an open day) → Library → Calendar shows the same month and day,
-and Library → Calendar → Library shows the Library's shelves without a new request; on the
+and Library → Calendar → Library shows the Library's shelves without a new request when
+nothing was written on the calendar or the map in between, and with the written photo's change
+after a write there; on the
 shelf page a sort change replaces the URL without a history entry.
 
 ## Revises
