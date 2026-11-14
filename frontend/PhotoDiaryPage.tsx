@@ -5,18 +5,21 @@ import { Images } from "lucide-react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useTranslations } from "next-intl";
 import { useCurrentDrive } from "@/components/CurrentDriveProvider";
+import { AppHeader } from "@/components/appshell/AppHeader";
+import type { LoadState } from "@/components/appshell/useLoad";
 import { PageFrame } from "@/components/PageFrame";
 import { PageHeader } from "@/components/PageHeader";
 import { PageTabs } from "@/components/PageTabs";
 import { CalendarView } from "./CalendarView";
 import { MapView, type MapRestore } from "./MapView";
-import { useWide } from "./useWide";
 import type { ListPosition } from "./PhotoList";
 import { buildPageQuery, parsePageUrl, type PageUrl } from "./lib/pageUrl";
 import { clearState, loadState, saveState, type SavedState } from "./lib/savedState";
 import { fetchMonths } from "./api";
 import { isNotFound } from "./lib/errors";
 import { photoTotal } from "./lib/total";
+import { useTarget } from "./useTarget";
+import type { SmartFolder } from "@/types/smartFolder";
 import { PAGE_SIZE } from "./usePagedPhotos";
 
 type View = PageUrl["view"];
@@ -29,38 +32,62 @@ export default function PhotoDiaryPage() {
 
 function Frame({
   drive,
-  total,
-  tabs,
+  header,
   children,
 }: {
   drive?: string;
-  total?: number | null;
-  tabs?: React.ReactNode;
+  header?: React.ReactNode;
   children?: React.ReactNode;
 }) {
   const t = useTranslations("photoDiary");
-  const { ref, wide } = useWide<HTMLDivElement>();
-  const scope =
-    drive === undefined ? undefined : total == null ? drive : t("scope", { drive, count: total });
-  // The wrapper takes the place `PageFrame` had in `main`, so it fills it the same way.
   return (
-    <div ref={ref} className="flex w-full min-w-0 flex-1 flex-col">
-      <PageFrame
-        width="wide"
-        header={
-          <PageHeader
-            titleIcon={Images}
-            title={t("nav.label")}
-            scope={scope}
-            actions={wide ? tabs : undefined}
-            tabs={wide ? undefined : tabs}
-          />
-        }
-      >
-        {children}
-      </PageFrame>
-    </div>
+    <PageFrame
+      width="wide"
+      header={
+        header ?? <PageHeader titleIcon={Images} title={t("nav.label")} scope={drive} />
+      }
+    >
+      {children}
+    </PageFrame>
   );
+}
+
+/**
+ * The core menu leaves the reason in a disabled row's `title`, which is not
+ * read out. This name carries a span that draws it, and the string method
+ * keeps the Manage dialog's search on the real name.
+ */
+function withReason(name: string, reason: string): string {
+  return {
+    $$typeof: Symbol.for("react.transitional.element"),
+    type: "span",
+    key: null,
+    props: {
+      children: [
+        name,
+        <span key="reason" className="block text-xs text-text-muted">
+          {reason}
+        </span>,
+      ],
+    },
+    _owner: null,
+    _store: {},
+    toLocaleLowerCase: () => name.toLocaleLowerCase(),
+  } as unknown as string;
+}
+
+function menuFolders(
+  folders: LoadState<SmartFolder[]>,
+  isUsable: (folder: SmartFolder) => boolean,
+  reason: string,
+): LoadState<SmartFolder[]> {
+  if (folders.status !== "loaded") return folders;
+  return {
+    ...folders,
+    data: folders.data.map((folder) =>
+      isUsable(folder) ? folder : { ...folder, name: withReason(folder.name, reason) },
+    ),
+  };
 }
 
 function Session({ drive }: { drive: string }) {
@@ -69,9 +96,20 @@ function Session({ drive }: { drive: string }) {
   const pathname = usePathname();
   const search = useSearchParams().toString();
   const url = useMemo(() => parsePageUrl(`?${search}`), [search]);
+  const target = useTarget(drive);
+  const targetId = useRef(target.selectedId);
+  targetId.current = target.selectedId;
 
   const [notAvailable, setNotAvailable] = useState(false);
-  const [total, setTotal] = useState<number | null>(null);
+  const [count, setCount] = useState<{ changes: number; value: number | null }>({
+    changes: -1,
+    value: null,
+  });
+  const total = target.ready && count.changes === target.changes ? count.value : null;
+  const reportTotal = useCallback(
+    (value: number) => setCount({ changes: target.changes, value }),
+    [target.changes],
+  );
   const [seen, setSeen] = useState({ calendar: url.view === "calendar", map: url.view === "map" });
   useEffect(() => {
     setSeen((current) => (current[url.view] ? current : { ...current, [url.view]: true }));
@@ -85,11 +123,13 @@ function Session({ drive }: { drive: string }) {
   const [countToken, setCountToken] = useState(0);
   const countChanged = useCallback(() => setCountToken((value) => value + 1), []);
   useEffect(() => {
-    if (!onMap) return;
+    if (!onMap || !target.ready) return;
     let current = true;
-    fetchMonths(drive).then(
+    const changes = target.changes;
+    const params = target.params;
+    (params ? fetchMonths(drive, params) : fetchMonths(drive)).then(
       (months) => {
-        if (current) setTotal(photoTotal(months));
+        if (current) setCount({ changes, value: photoTotal(months) });
       },
       (error: unknown) => {
         if (current && isNotFound(error)) setNotAvailable(true);
@@ -98,7 +138,7 @@ function Session({ drive }: { drive: string }) {
     return () => {
       current = false;
     };
-  }, [drive, onMap, countToken]);
+  }, [drive, onMap, countToken, target.ready, target.changes, target.params]);
 
   // A URL with no query is a fresh start however it was reached.
   const [initial] = useState(() => {
@@ -112,6 +152,7 @@ function Session({ drive }: { drive: string }) {
       view: url.view,
     };
   });
+  const savedTarget = initial.saved.target ?? "default";
 
   const freshStart = useRef(search === "");
   const saved = useRef<SavedState>(initial.saved);
@@ -131,8 +172,8 @@ function Session({ drive }: { drive: string }) {
       state.list = { loaded: position.loaded(), scrollY: position.scrollY() };
       state.listView = view;
     }
-    if (Object.keys(state).length > 0) saveState(drive, state);
-    else clearState(drive);
+    if (Object.keys(state).length === 0) clearState(drive);
+    else saveState(drive, { ...state, target: targetId.current });
   }, [drive]);
 
   // A layout cleanup, because it runs before the removed tree leaves the
@@ -166,7 +207,7 @@ function Session({ drive }: { drive: string }) {
   const calendarRestore = useRef(
     initial.view === "calendar" && initial.listOpensFromUrl && initial.saved.list &&
       initial.saved.listView !== "map"
-      ? initial.saved.list
+      ? { ...initial.saved.list, target: savedTarget }
       : null,
   );
   const mapRestore = useRef<MapRestore>({
@@ -175,6 +216,7 @@ function Session({ drive }: { drive: string }) {
     pointIds: initial.saved.pointIds,
     list:
       initial.view === "map" && initial.saved.listView !== "calendar" ? initial.saved.list : undefined,
+    target: savedTarget,
   });
   const calendarRestored = useCallback(() => {
     calendarRestore.current = null;
@@ -182,6 +224,20 @@ function Session({ drive }: { drive: string }) {
   const mapRestored = useCallback(() => {
     mapRestore.current = { ...mapRestore.current, list: undefined };
   }, []);
+
+  // The views reset from their target key; the saved list positions and pin
+  // ids are dropped here because the new target may not hold them.
+  const drawnFor = useRef(target.changes);
+  useLayoutEffect(() => {
+    if (drawnFor.current === target.changes) return;
+    drawnFor.current = target.changes;
+    calendarList.current = null;
+    mapList.current = null;
+    saved.current = { center: saved.current.center, zoom: saved.current.zoom };
+    calendarRestore.current = null;
+    mapRestore.current = { center: saved.current.center, zoom: saved.current.zoom };
+    flush();
+  }, [target.changes, flush]);
 
   // A URL with no query, reached while the page stays mounted (the sidebar
   // row, Back), starts over: both views are made again. The page's own
@@ -212,8 +268,8 @@ function Session({ drive }: { drive: string }) {
   const go = useCallback(
     (mode: "push" | "replace", next: Partial<PageUrl>) => {
       const query = buildPageQuery(next);
-      const target = new URLSearchParams(query).toString();
-      ownTarget.current = target === searchRef.current ? null : target;
+      const nextSearch = new URLSearchParams(query).toString();
+      ownTarget.current = nextSearch === searchRef.current ? null : nextSearch;
       const href = `${pathname}${query}`;
       if (mode === "push") router.push(href, { scroll: false });
       else router.replace(href, { scroll: false });
@@ -237,36 +293,64 @@ function Session({ drive }: { drive: string }) {
     );
   }
 
+  const tabs = (
+    <PageTabs
+      label={t("view.label")}
+      current={url.view}
+      onSelect={selectView}
+      items={[
+        { key: "calendar", label: t("view.calendar") },
+        { key: "map", label: t("view.map") },
+      ]}
+    />
+  );
+
   return (
     <Frame
       drive={drive}
-      total={total}
-      tabs={
-        <PageTabs
-          label={t("view.label")}
-          current={url.view}
-          onSelect={selectView}
-          items={[
-            { key: "calendar", label: t("view.calendar") },
-            { key: "map", label: t("view.map") },
-          ]}
+      header={
+        <AppHeader
+          drive={drive}
+          icon={Images}
+          title={t("nav.label")}
+          countDetail={total === null ? null : t("photoCount", { count: total })}
+          tabs={tabs}
+          target={{
+            drive,
+            app: { addon: "photo_diary" },
+            name: target.lookingUp ? null : (target.folder?.name ?? t("allPhotos")),
+            folders: menuFolders(target.folders, target.isUsable, t("targetUnavailable")),
+            selectedId: target.selectedId,
+            currentCount: total,
+            label: t("target"),
+            defaultLabel: t("allPhotos"),
+            unavailableLabel: t("targetUnavailable"),
+            defaultTargetTypes: ["image"],
+            isUsable: target.isUsable,
+            onChoose: target.choose,
+            onRetryFolders: target.retryFolders,
+          }}
         />
       }
     >
       {(url.view === "calendar" || seen.calendar) && (
         <div hidden={url.view !== "calendar"}>
           <CalendarView
-            key={epoch}
+            key={`${epoch}:${target.changes}`}
             drive={drive}
             active={url.view === "calendar"}
             url={url}
             go={go}
+            target={target.params}
+            targetId={target.selectedId}
+            targetKey={target.changes}
+            ready={target.ready}
             positionRef={calendarList}
             restore={calendarRestore.current}
             onRestored={calendarRestored}
             onNotAvailable={onNotAvailable}
-            onTotal={setTotal}
-            freshStart={freshStart.current}
+            onTotal={reportTotal}
+            freshStart={freshStart.current && target.changes === 0}
           />
         </div>
       )}
@@ -276,6 +360,10 @@ function Session({ drive }: { drive: string }) {
             key={epoch}
             drive={drive}
             active={url.view === "map"}
+            target={target.params}
+            targetId={target.selectedId}
+            targetKey={target.changes}
+            ready={target.ready}
             restore={mapRestore.current}
             positionRef={mapList}
             onView={setView}

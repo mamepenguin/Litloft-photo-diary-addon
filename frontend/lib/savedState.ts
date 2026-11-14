@@ -5,6 +5,8 @@ export type SavedState = {
   list?: { loaded: number; scrollY: number };
   /** Which view's list `list` belongs to; absent means whichever is open. */
   listView?: "calendar" | "map";
+  /** The target in force when the state was saved; absent counts as `default`. */
+  target?: string;
 };
 
 const key = (drive: string) => `photo_diary:state:${encodeURIComponent(drive)}`;
@@ -27,6 +29,7 @@ function sanitize(raw: unknown): SavedState | null {
     state.list = { loaded: list.loaded, scrollY: list.scrollY };
   }
   if (r.listView === "calendar" || r.listView === "map") state.listView = r.listView;
+  if (typeof r.target === "string") state.target = r.target;
   return state;
 }
 

@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { fetchPhotos } from "./api";
+import { fetchPhotos, type TargetParams } from "./api";
 
 const REST_MS = 120;
 
@@ -25,13 +25,17 @@ type Options = {
   month: string | null;
   /** Changes with every read of the month's days, which drops the held answers. */
   version: unknown;
+  /** The target the day's first photo is read under; `null` is the default target. */
+  target: TargetParams | null;
+  /** Changes with the target, which drops the held answers and the preview on screen. */
+  targetKey: number;
 };
 
 /**
  * A day's first photo, shown after the pointer rests on the day. A device that
  * cannot hover never reads: the list the day opens holds the same photo.
  */
-export function useDayPreview({ drive, active, month, version }: Options): DayPreview {
+export function useDayPreview({ drive, active, month, version, target, targetKey }: Options): DayPreview {
   const [view, setView] = useState<PreviewView | null>(null);
   const held = useRef(new Map<string, string>());
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -69,7 +73,7 @@ export function useDayPreview({ drive, active, month, version }: Options): DayPr
           show(id);
           return;
         }
-        fetchPhotos(drive, { date, limit: 1 }).then(
+        fetchPhotos(drive, { ...(target ?? {}), date, limit: 1 }).then(
           (result) => {
             if (mine !== turn.current) return;
             const first = result.file_ids[0];
@@ -81,7 +85,7 @@ export function useDayPreview({ drive, active, month, version }: Options): DayPr
         );
       }, REST_MS);
     },
-    [drive, end],
+    [drive, end, target],
   );
 
   const imageLoaded = useCallback(() => {
@@ -95,8 +99,8 @@ export function useDayPreview({ drive, active, month, version }: Options): DayPr
 
   useEffect(() => {
     held.current.clear();
-  }, [version, drive]);
-  useEffect(() => end(), [month, active, end]);
+  }, [version, drive, targetKey]);
+  useEffect(() => end(), [month, active, targetKey, end]);
   useEffect(() => {
     window.addEventListener("scroll", end, { passive: true });
     return () => {

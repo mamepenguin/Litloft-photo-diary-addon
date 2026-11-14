@@ -23,7 +23,10 @@
     },
     "close": "閉じる",
     "undated": "撮影日なし",
-    "scope": "{drive} · {count}枚",
+    "photoCount": "{count}枚",
+    "target": "対象",
+    "allPhotos": "すべての写真",
+    "targetUnavailable": "この対象は使えません",
     "calendar": {
       "dayLabel": "{date} {count}枚",
       "dayLabelNoted": "{date}、{count}枚、メモあり",

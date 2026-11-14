@@ -587,7 +587,7 @@ describe("SPEC-PD-006 I4: months with notes and no photos", () => {
     active("2026-09-09");
     await open("?month=2026-09");
     await button("9月9日、メモあり");
-    expect(screen.getByText(/^family/).textContent).toBe("family · 115枚");
+    expect(screen.getByText("family", { exact: true }).parentElement?.textContent?.trim()).toBe("family · 115枚");
   });
 
   it("a fresh start opens on the newest month, also when only a note makes it the newest", async () => {

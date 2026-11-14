@@ -669,7 +669,7 @@ describe("SPEC-PD-017 I10: the view switch's place", () => {
       widthOf(px);
       await renderAt("?month=2026-10");
       const header = document.querySelector("header") as HTMLElement;
-      const titleRow = header.querySelector("h1")!.closest("div.flex.min-w-0") as HTMLElement;
+      const titleRow = header.querySelector("h1")!.closest("[class*='row-start-1']") as HTMLElement;
       expect(titleRow.contains(screen.getByRole("tablist")), `${px}px`).toBe(false);
       expect(header.contains(screen.getByRole("tablist")), `${px}px`).toBe(true);
       cleanup();

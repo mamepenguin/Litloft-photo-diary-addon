@@ -1032,7 +1032,7 @@ describe("SPEC-PD-001 / I6: saved state and fresh starts", () => {
     await day("5月9日 1枚");
     expect(api.fetchMonths).toHaveBeenCalledWith("work");
     expect(renderedIds()).toEqual([]);
-    expect(loadState("family")).toEqual({ zoom: 5 });
+    expect(loadState("family")).toEqual({ zoom: 5, target: "default" });
   });
 
   it("a response for a drive the viewer has left is discarded", async () => {
@@ -1468,7 +1468,7 @@ describe("loading and refetching states of what a decision uses", () => {
 
 describe("the scope line: the drive and its photo count on either view", () => {
   const months = () => ({ months: data.family.months, undated_count: data.family.undated_count });
-  const scope = () => screen.getByText(/^family/).textContent;
+  const scope = () => (screen.getByText("family", { exact: true }).parentElement?.textContent ?? "").trim();
 
   it("shows the count on the map view reached directly, and on reload", async () => {
     await openMap("?view=map");
@@ -1540,7 +1540,7 @@ describe("the scope line: the drive and its photo count on either view", () => {
 // ---------------------------------------------------------------- review round 1
 
 const SIDEBAR_URL = () => `/drive/${h.drive.current}/addons/photo_diary`;
-const scopeLine = () => screen.getByText(/^family/).textContent;
+const scopeLine = () => (screen.getByText("family", { exact: true }).parentElement?.textContent ?? "").trim();
 
 describe("the open list and the selected point on the map", () => {
   const selections = () => h.handles[0].setSelected.mock.calls.map((c) => c[0]);
