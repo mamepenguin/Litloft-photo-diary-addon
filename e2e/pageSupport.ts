@@ -5,6 +5,7 @@ const MONTHS = ["2026-09", "2026-08", "2026-06", "2026-05", "2026-03", "2025-12"
 export const BIG_DAY = "2026-09-10";
 export const BIG_DAY_COUNT = 120;
 const POINT_COUNT = 100;
+export const SCOPE_COUNT = BIG_DAY_COUNT + (MONTHS.length - 1) * 5 + 3;
 
 const ids = (prefix: string, n: number) => Array.from({ length: n }, (_, i) => `${prefix}${i}`);
 
@@ -16,7 +17,7 @@ const ids = (prefix: string, n: number) => Array.from({ length: n }, (_, i) => `
 export async function serveApi(page: Page) {
   const json = (body: unknown) => ({ status: 200, contentType: "application/json", body: JSON.stringify(body) });
 
-  await page.route("**/api/addons/photo_diary/calendar/months", (route) =>
+  await page.route("**/api/addons/photo_diary/calendar/months*", (route) =>
     route.fulfill(
       json({
         months: MONTHS.map((month, i) => ({ month, count: i === 0 ? BIG_DAY_COUNT : 5 })),
@@ -35,7 +36,7 @@ export async function serveApi(page: Page) {
     const limit = Number(q.get("limit") ?? 40);
     route.fulfill(json({ file_ids: all.slice(offset, offset + limit), total: all.length }));
   });
-  await page.route("**/api/addons/photo_diary/points", (route) =>
+  await page.route("**/api/addons/photo_diary/points*", (route) =>
     route.fulfill(
       json({
         points: ids("p", POINT_COUNT).map((file_id) => ({ file_id, lat: 35.6812, lon: 139.7671, taken_at: "2026-09-10T10:00:00" })),
@@ -46,6 +47,11 @@ export async function serveApi(page: Page) {
     route.fulfill(json({ tile_url: TILE_URL, attribution: "" })),
   );
   await page.route("**/api/addons/photo_diary/note*", (route) => route.fulfill(json({ state: "none", file_id: null })));
+  await page.route("**/api/drives/*/smart-folders", (route) => route.fulfill(json([])));
+  await page.route(
+    (url) => /\/api\/drives\/[^/]+\/files$/.test(url.pathname),
+    (route) => route.fulfill(json({ data: [], meta: { total: SCOPE_COUNT, page: 1, limit: 1 } })),
+  );
   await page.route("**/api/addons/status*", (route) => route.fulfill(json({ addons: { knowledge: {} }, slots: {} })));
   await page.route("**/api/drives/*/addon-policies", (route) =>
     route.fulfill(json({ addons: { knowledge: { default: true, features: { editor: true } } } })),

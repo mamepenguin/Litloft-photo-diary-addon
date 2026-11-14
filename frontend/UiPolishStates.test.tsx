@@ -184,7 +184,14 @@ const mapOptions: { current: any } = { current: null };
 function mockMap() {
   vi.mocked(mapModule.createPhotoMap).mockImplementation((async (_el: HTMLElement, options: any) => {
     mapOptions.current = options;
-    const handle = { setPoints: vi.fn(), setSelected: vi.fn(), resume: vi.fn(), pause: vi.fn(), destroy: vi.fn() };
+    const handle = {
+      setPoints: vi.fn(),
+      setSelected: vi.fn(),
+      getView: vi.fn(() => ({ center: [0, 0] as [number, number], zoom: 1 })),
+      resume: vi.fn(),
+      pause: vi.fn(),
+      destroy: vi.fn(),
+    };
     mapHandles.push(handle);
     return handle;
   }) as any);
@@ -656,27 +663,26 @@ describe("SPEC-PD-012: the map's stage, and its inputs while they are read again
 
 // ---------------------------------------------------------------- the tabs
 
-describe("SPEC-PD-012: the view switch's place", () => {
+describe("SPEC-PD-017 I10: the view switch's place", () => {
   const widthOf = (px: number) => {
     layoutSpies.push(
       vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation((() => ({ top: 0, left: 0, right: px, bottom: 0, width: px, height: 0, x: 0, y: 0 })) as any),
     );
   };
 
-  it("is in the header's title row on a wide layout, and in its own row on a narrow one", async () => {
-    widthOf(1280);
-    await renderAt("?month=2026-10");
-    const header = document.querySelector("header") as HTMLElement;
-    const titleRow = header.querySelector("h1")!.closest("div.flex.min-w-0") as HTMLElement;
-    expect(titleRow.contains(screen.getByRole("tablist"))).toBe(true);
-    cleanup();
-
-    withoutLayout();
-    widthOf(375);
-    await renderAt("?month=2026-10");
-    const narrow = document.querySelector("header") as HTMLElement;
-    const row = narrow.querySelector("h1")!.closest("div.flex.min-w-0") as HTMLElement;
-    expect(row.contains(screen.getByRole("tablist"))).toBe(false);
-    expect(narrow.contains(screen.getByRole("tablist"))).toBe(true);
+  it("is in the header's tabs row, not the title row, on a wide and a narrow layout", async () => {
+    for (const px of [1280, 375]) {
+      withoutLayout();
+      widthOf(px);
+      await renderAt("?month=2026-10");
+      const header = document.querySelector("header") as HTMLElement;
+      const tablist = screen.getByRole("tablist");
+      const titleRowCells = Array.from(header.querySelectorAll<HTMLElement>("[class*='row-start-1']"));
+      expect(titleRowCells.some((cell) => cell.querySelector("h1") || cell.matches("h1")), `${px}px`).toBe(true);
+      expect(titleRowCells.some((cell) => cell.contains(tablist)), `${px}px`).toBe(false);
+      expect(tablist.closest("[class*='row-start-3']"), `${px}px`).not.toBeNull();
+      expect(header.contains(screen.getByRole("tablist")), `${px}px`).toBe(true);
+      cleanup();
+    }
   });
 });

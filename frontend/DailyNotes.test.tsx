@@ -373,7 +373,14 @@ beforeEach(() => {
   vi.mocked(mapModule.createPhotoMap).mockReset();
   vi.mocked(mapModule.createPhotoMap).mockImplementation((async (_el: HTMLElement, options: any) => {
     h.mapOptions.current = options;
-    return { setPoints: vi.fn(), setSelected: vi.fn(), resume: vi.fn(), pause: vi.fn(), destroy: vi.fn() };
+    return {
+      setPoints: vi.fn(),
+      setSelected: vi.fn(),
+      getView: vi.fn(() => ({ center: [0, 0] as [number, number], zoom: 1 })),
+      resume: vi.fn(),
+      pause: vi.fn(),
+      destroy: vi.fn(),
+    };
   }) as any);
 
   const origPush = window.history.pushState.bind(window.history);
@@ -587,7 +594,7 @@ describe("SPEC-PD-006 I4: months with notes and no photos", () => {
     active("2026-09-09");
     await open("?month=2026-09");
     await button("9月9日、メモあり");
-    expect(screen.getByText(/^family/).textContent).toBe("family · 115枚");
+    expect(screen.getByText("family", { exact: true }).parentElement?.textContent?.trim()).toBe("family · 115枚");
   });
 
   it("a fresh start opens on the newest month, also when only a note makes it the newest", async () => {

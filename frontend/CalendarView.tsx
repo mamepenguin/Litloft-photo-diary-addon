@@ -5,7 +5,7 @@ import { CalendarOff, ChevronLeft, ChevronRight } from "lucide-react";
 import { useLocale, useTranslations } from "next-intl";
 import { Button } from "@/components/Button";
 import { FileGrid } from "@/components/FileGrid";
-import { fetchDays, fetchMonths, fetchPhotos } from "./api";
+import { fetchDays, fetchMonths, fetchPhotos, type TargetParams } from "./api";
 import { isNotFound } from "./lib/errors";
 import { LoadError } from "./LoadError";
 import { MonthGrid, type DayInfo } from "./MonthGrid";
@@ -39,11 +39,18 @@ type Props = {
   active: boolean;
   url: PageUrl;
   go: (mode: "push" | "replace", next: Partial<PageUrl>) => void;
+  /** The target the photo routes take; `null` is the default target. */
+  target: TargetParams | null;
+  targetId: string;
+  targetKey: number;
+  /** Whether the target has been resolved; no photo request goes out before it has. */
+  ready: boolean;
   positionRef: MutableRefObject<ListPosition | null>;
-  restore: { loaded: number; scrollY: number } | null;
+  restore: { loaded: number; scrollY: number; target: string } | null;
   onRestored: () => void;
   onNotAvailable: () => void;
-  onTotal: (total: number) => void;
+  /** The answer's total and the target token its request was made under. */
+  onTotal: (total: number, changes: number) => void;
   /** The page was opened with no query, so the first month drawn fades in. */
   freshStart: boolean;
 };
@@ -53,6 +60,10 @@ export function CalendarView({
   active,
   url,
   go,
+  target,
+  targetId,
+  targetKey,
+  ready,
   positionRef,
   restore,
   onRestored,
@@ -100,19 +111,23 @@ export function CalendarView({
   const haveDaysFor = useRef<string | null>(null);
 
   const nothingDated = months !== null && months.months.length === 0;
-  const month = months === null ? null : (url.month ?? months.months[0]?.month ?? null);
+  const monthList = useMemo(() => months?.months ?? [], [months]);
+  // The month in the URL is drawn even when the new target has nothing there,
+  // so the screen and the address agree; only a URL with no month takes the
+  // target's newest.
+  const month = months === null ? null : (url.month ?? monthList[0]?.month ?? null);
 
   useEffect(() => {
-    if (!active) return;
+    if (!active || !ready) return;
     const mine = ++monthsRequest.current;
-    fetchMonths(drive).then(
+    (target ? fetchMonths(drive, target) : fetchMonths(drive)).then(
       (result) => {
         if (mine !== monthsRequest.current) return;
         haveMonths.current = true;
         setMonths(result);
         setMonthsFailed(false);
         report("months", true);
-        onTotal(photoTotal(result));
+        onTotal(photoTotal(result), targetKey);
       },
       (error: unknown) => {
         if (mine !== monthsRequest.current) return;
@@ -121,12 +136,12 @@ export function CalendarView({
         else setMonthsFailed(true);
       },
     );
-  }, [drive, active, token, calendarToken, report, onNotAvailable, onTotal]);
+  }, [drive, active, ready, target, targetKey, token, calendarToken, report, onNotAvailable, onTotal]);
 
   useEffect(() => {
-    if (!active || month === null || nothingDated) return;
+    if (!active || !ready || month === null || nothingDated) return;
     const mine = ++daysRequest.current;
-    fetchDays(drive, month).then(
+    (target ? fetchDays(drive, month, target) : fetchDays(drive, month)).then(
       (result) => {
         if (mine !== daysRequest.current) return;
         haveDaysFor.current = month;
@@ -144,17 +159,14 @@ export function CalendarView({
         else setDaysFailedFor(month);
       },
     );
-  }, [drive, active, month, nothingDated, token, calendarToken, report, onNotAvailable]);
+  }, [drive, active, ready, month, nothingDated, target, token, calendarToken, report, onNotAvailable]);
 
   const undatedCount = months?.undated_count ?? 0;
-  const listKind: "day" | "undated" | null =
-    months === null
-      ? null
-      : url.date
-        ? "day"
-        : url.undated && undatedCount > 0
-          ? "undated"
-          : null;
+  const listKind: "day" | "undated" | null = url.date
+    ? "day"
+    : months !== null && url.undated && undatedCount > 0
+      ? "undated"
+      : null;
 
   // `go` drops the view from the URL, so only the view on screen may call it.
   useEffect(() => {
@@ -163,13 +175,17 @@ export function CalendarView({
 
   const fetchIds = useCallback<FetchIds>(
     async (offset, limit) => {
+      // The day's note is read while the target is looked up; its photos are not.
+      if (!ready) return new Promise<{ ids: string[]; total: number }>(() => {});
       const result = await fetchPhotos(
         drive,
-        listKind === "day" ? { date: url.date ?? undefined, limit, offset } : { undated: true, limit, offset },
+        listKind === "day"
+          ? { ...(target ?? {}), date: url.date ?? undefined, limit, offset }
+          : { ...(target ?? {}), undated: true, limit, offset },
       );
       return { ids: result.file_ids, total: result.total };
     },
-    [drive, listKind, url.date],
+    [drive, ready, listKind, url.date, target],
   );
 
   const listKey = listKind === "day" ? `day:${url.date}` : "undated";
@@ -177,7 +193,6 @@ export function CalendarView({
     if (listKind === null) report("list", true);
   }, [listKind, report]);
 
-  const monthList = useMemo(() => months?.months ?? [], [months]);
   const previous = month ? monthList.find((m) => m.month < month) : undefined;
   const next = month ? [...monthList].reverse().find((m) => m.month > month) : undefined;
 
@@ -192,12 +207,16 @@ export function CalendarView({
   // The saved position belongs to the list the page was opened on.
   const urlListKey = url.date ? `day:${url.date}` : url.undated ? "undated" : null;
   const [restoreFor] = useState(restore === null ? null : urlListKey);
-  const restoreHere = restore !== null && restoreFor === urlListKey ? restore : undefined;
+  const restoreHere =
+    ready && restore !== null && restoreFor === urlListKey && restore.target === targetId
+      ? restore
+      : undefined;
   useEffect(() => {
-    if (restoreFor !== null && restoreFor !== urlListKey) onRestored();
-  }, [restoreFor, urlListKey, onRestored]);
+    if (!ready || restore === null) return;
+    if (restoreFor !== urlListKey || restore.target !== targetId) onRestored();
+  }, [ready, restore, restoreFor, urlListKey, targetId, onRestored]);
 
-  const preview = useDayPreview({ drive, active, month, version: days });
+  const preview = useDayPreview({ drive, active, month, version: days, target, targetKey });
 
   const stripEligible = active && !wide && openDate !== null && daysForMonth !== null;
   const marker = useReachedHeader(stripEligible, STRIP_REACH);
@@ -255,13 +274,13 @@ export function CalendarView({
 
   const [secondReadDue, setSecondReadDue] = useState(url.date !== null);
   useEffect(() => {
-    if (!active || !secondReadDue) return;
+    if (!active || !ready || !secondReadDue) return;
     const timer = setTimeout(() => {
       setSecondReadDue(false);
       setToken((value) => value + 1);
     }, SECOND_READ_MS);
     return () => clearTimeout(timer);
-  }, [active, secondReadDue]);
+  }, [active, ready, secondReadDue]);
 
   const goToday = () => {
     const today = localToday();

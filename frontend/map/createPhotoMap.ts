@@ -98,6 +98,8 @@ export interface PhotoMap {
   setPoints(points: Point[]): void;
   /** Gives the pin that stands only for photos among `ids` its accent border. */
   setSelected(ids: string[] | null): void;
+  /** The centre and zoom in force, including a fit the viewer has not moved. */
+  getView(): { center: LngLat; zoom: number };
   /** The view is going off screen: no pin is removed until the map has gone idle after it returns. */
   pause(): void;
   /** The view is on screen again: applies a theme change that waited, and places the pins. */
@@ -605,6 +607,10 @@ export async function createPhotoMap(
       if (next.size === selected.size && [...next].every((id) => selected.has(id))) return;
       selected = next;
       drawData();
+    },
+    getView() {
+      const center = map.getCenter();
+      return { center: [center.lng, center.lat], zoom: map.getZoom() };
     },
     pause() {
       resuming = true;

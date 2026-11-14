@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type MutableRefObject } from "react";
 import { MapPinOff } from "lucide-react";
 import { useTranslations } from "next-intl";
-import { fetchMapConfig, fetchPoints, type Point } from "./api";
+import { fetchMapConfig, fetchPoints, type Point, type TargetParams } from "./api";
 import { isNotFound } from "./lib/errors";
 import { LoadError } from "./LoadError";
 import { CloseControl, PhotoList, type ListPosition } from "./PhotoList";
@@ -22,11 +22,19 @@ export type MapRestore = {
   zoom?: number;
   pointIds?: string[];
   list?: { loaded: number; scrollY: number };
+  /** The target the state was saved under; the lists are dropped on a mismatch. */
+  target?: string;
 };
 
 type Props = {
   drive: string;
   active: boolean;
+  /** The target the photo routes take; `null` is the default target. */
+  target: TargetParams | null;
+  targetId: string;
+  targetKey: number;
+  /** Whether the target has been resolved; no photo request goes out before it has. */
+  ready: boolean;
   restore: MapRestore;
   positionRef: MutableRefObject<ListPosition | null>;
   onView: (center: LngLat, zoom: number) => void;
@@ -56,6 +64,10 @@ function reduceTo(ids: string[], points: Point[]): string[] {
 export function MapView({
   drive,
   active,
+  target,
+  targetId,
+  targetKey,
+  ready,
   restore,
   positionRef,
   onView,
@@ -92,6 +104,9 @@ export function MapView({
   const unavailable = useRef(false);
   const restoredList = useRef(false);
   const restoreSeq = useRef<number | null>(null);
+  const targetRef = useRef(target);
+  targetRef.current = target;
+  const seenTarget = useRef(targetKey);
 
   const applyOpenIds = useCallback(
     (ids: string[] | null) => {
@@ -102,19 +117,48 @@ export function MapView({
     [onPointIds],
   );
 
+  // A map fitted but never moved has its view only inside the map: `viewRef`
+  // is filled by moveend.
+  const dropMap = useCallback(() => {
+    if (!handle.current) return;
+    viewRef.current = handle.current.getView();
+    handle.current.destroy();
+    handle.current = null;
+  }, []);
+
   const handlers = useRef({ applyOpenIds, onView, onRefresh });
   handlers.current = { applyOpenIds, onView, onRefresh };
 
+  // The map is kept across a target change, so its centre and zoom survive
+  // while every pin of the previous target goes at once.
   useEffect(() => {
-    if (!active || unavailable.current) return;
+    if (seenTarget.current === targetKey) return;
+    seenTarget.current = targetKey;
+    request.current += 1;
+    pointsRef.current = null;
+    setPoints(null);
+    setListError(null);
+    handlers.current.applyOpenIds(null);
+    restoredList.current = true;
+    reason.current = "enter";
+    if (handle.current) {
+      handle.current.setPoints([]);
+      setPhase("ready");
+    } else {
+      setPhase("loading");
+    }
+  }, [targetKey]);
+
+  useEffect(() => {
+    if (!active || !ready || unavailable.current) return;
     const mine = ++request.current;
     const why = reason.current;
     reason.current = "enter";
-    if (pointsRef.current === null) setPhase("loading");
+    if (pointsRef.current === null && !handle.current) setPhase("loading");
 
     Promise.all([
       config.current ? Promise.resolve(config.current) : fetchMapConfig(drive),
-      fetchPoints(drive),
+      targetRef.current ? fetchPoints(drive, targetRef.current) : fetchPoints(drive),
     ]).then(
       ([loadedConfig, loaded]) => {
         if (mine !== request.current) return;
@@ -126,7 +170,7 @@ export function MapView({
         let ids = openIdsRef.current;
         if (!restoredList.current) {
           restoredList.current = true;
-          if (restore.pointIds && loaded.points.length > 0) {
+          if (restore.pointIds && restore.target === targetId && loaded.points.length > 0) {
             const kept = reduceTo(restore.pointIds, loaded.points);
             if (kept.length > 0) {
               ids = kept;
@@ -142,8 +186,7 @@ export function MapView({
         }
 
         if (loaded.points.length === 0) {
-          handle.current?.destroy();
-          handle.current = null;
+          dropMap();
           setTileFailing(false);
           setPhase("empty");
         } else if (handle.current) {
@@ -160,12 +203,18 @@ export function MapView({
           unavailable.current = true;
           onNotAvailable();
         } else if (pointsRef.current !== null) setRefreshFailed(true);
-        else setPhase("failed");
+        else {
+          // The failed phase unmounts the stage, so a handle kept here would
+          // draw into a detached node once the retry succeeds.
+          dropMap();
+          setTileFailing(false);
+          setPhase("failed");
+        }
       },
     );
     // `restore` is the page's first-mount state and does not change.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [drive, active, token, onNotAvailable]);
+  }, [drive, active, ready, targetKey, token, onNotAvailable, dropMap]);
 
   // A map made while its view is hidden is fitted against a container of no
   // size, so it is made once the view is on screen.
@@ -205,7 +254,7 @@ export function MapView({
           return;
         }
         handle.current = created;
-        if (pointsRef.current !== used && pointsRef.current) created.setPoints(pointsRef.current);
+        created.setPoints(pointsRef.current ?? used);
         created.setSelected(openIdsRef.current);
         setPhase("ready");
       },
@@ -328,7 +377,7 @@ export function MapView({
               refreshToken={listToken}
               active={active}
               scroller="panel"
-              restore={restoreSeq.current === listSeq ? restore.list : undefined}
+              restore={restoreSeq.current === listSeq && restore.target === targetId ? restore.list : undefined}
               positionRef={positionRef}
               onClose={closeList}
               onNotAvailable={onNotAvailable}

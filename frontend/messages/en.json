@@ -23,7 +23,10 @@
     },
     "close": "Close",
     "undated": "No capture date",
-    "scope": "{drive} · {count, plural, one {# photo} other {# photos}}",
+    "photoCount": "{count, plural, one {# photo} other {# photos}}",
+    "target": "Target",
+    "allPhotos": "All photos",
+    "targetUnavailable": "This target cannot be used",
     "calendar": {
       "dayLabel": "{date}, {count, plural, one {# photo} other {# photos}}",
       "dayLabelNoted": "{date}, {count, plural, one {# photo} other {# photos}}, has a note",
