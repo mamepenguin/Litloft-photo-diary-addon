@@ -13,7 +13,7 @@ import coreJa from "@/messages-core/ja.json";
 import ja from "./messages/ja.json";
 import Page from "./Page";
 import * as mapModule from "./map/createPhotoMap";
-import { saveState } from "./lib/savedState";
+import { loadState, saveState } from "./lib/savedState";
 import { readAppTarget, writeAppTarget } from "@/lib/appPrefs";
 import type { SmartFolder } from "@/types/smartFolder";
 
@@ -339,6 +339,9 @@ class IdleResizeObserver {
   disconnect() {}
 }
 
+// The view a created map was fitted to, which its handle knows without a move.
+const FITTED: { center: [number, number]; zoom: number } = { center: [10, 20], zoom: 8 };
+
 const ORIGINAL_WAIT = getConfig().asyncUtilTimeout;
 
 beforeEach(() => {
@@ -362,7 +365,14 @@ beforeEach(() => {
   vi.mocked(mapModule.createPhotoMap).mockReset();
   vi.mocked(mapModule.createPhotoMap).mockImplementation((async (_el: HTMLElement, options: any) => {
     h.mapOptions.current = options;
-    const handle = { setPoints: vi.fn(), setSelected: vi.fn(), resume: vi.fn(), pause: vi.fn(), destroy: vi.fn() };
+    const handle = {
+      setPoints: vi.fn(),
+      setSelected: vi.fn(),
+      resume: vi.fn(),
+      pause: vi.fn(),
+      getView: vi.fn(() => FITTED),
+      destroy: vi.fn(),
+    };
     h.handles.push(handle);
     return handle;
   }) as any);
@@ -715,6 +725,46 @@ describe("SPEC-PD-016 item 8: a target change", () => {
     expect(JSON.stringify(h.mapOptions.current!.points)).toContain("t0");
   });
 
+  it("SPEC-PD-016 item 8 a map fitted and never moved keeps its view when an empty target destroys it", async () => {
+    await settled("?view=map");
+    await waitFor(() => expect(h.mapOptions.current).not.toBeNull());
+    expect(h.mapOptions.current!.center).toBeUndefined();
+    await choose("すべての写真", "Videos");
+    await screen.findByText("位置情報のある写真はありません");
+    expect(h.handles[0].destroy).toHaveBeenCalled();
+    await choose("Videos", "Trip");
+    await waitFor(() => expect(mapModule.createPhotoMap).toHaveBeenCalledTimes(2));
+    expect(h.mapOptions.current!.center).toEqual(FITTED.center);
+    expect(h.mapOptions.current!.zoom).toBe(FITTED.zoom);
+  });
+
+  it("SPEC-PD-016 item 8 a map fitted and never moved keeps its view when a failed read destroys it", async () => {
+    await settled("?view=map");
+    await waitFor(() => expect(h.mapOptions.current).not.toBeNull());
+    expect(h.mapOptions.current!.center).toBeUndefined();
+    answer((r) => r.path === `${BASE}/points` && libraryKey(r) === "trip", () => json({ detail: "x" }, 500));
+    await choose("すべての写真", "Trip");
+    await screen.findByText("読み込めませんでした");
+    expect(h.handles[0].destroy).toHaveBeenCalled();
+    await click(screen.getByRole("button", { name: "再試行" }));
+    await waitFor(() => expect(mapModule.createPhotoMap).toHaveBeenCalledTimes(2));
+    expect(h.mapOptions.current!.center).toEqual(FITTED.center);
+    expect(h.mapOptions.current!.zoom).toBe(FITTED.zoom);
+  });
+
+  it("SPEC-PD-016 item 8 a retry after a failed read shows no tile notice over the map it draws", async () => {
+    await settled("?view=map");
+    await waitFor(() => expect(h.mapOptions.current).not.toBeNull());
+    await act(async () => void h.mapOptions.current!.onTileFailureChange(true));
+    await screen.findByText("地図を読み込めません");
+    answer((r) => r.path === `${BASE}/points` && libraryKey(r) === "trip", () => json({ detail: "x" }, 500));
+    await choose("すべての写真", "Trip");
+    await screen.findByText("読み込めませんでした");
+    await click(screen.getByRole("button", { name: "再試行" }));
+    await waitFor(() => expect(mapModule.createPhotoMap).toHaveBeenCalledTimes(2));
+    expect(screen.queryByText("地図を読み込めません")).toBeNull();
+  });
+
   it("SPEC-PD-016 I4 an empty target shows no-located state, and the next target with pins is fitted", async () => {
     writeAppTarget("family", APP, VIDEOS.id);
     await settled("?view=map");
@@ -874,6 +924,37 @@ describe("SPEC-PD-016 I9: state saved under a target", () => {
       (r) => r.path === `${BASE}/photos` && libraryKey(r) === "trip" && r.query.get("date") === "2026-09-02",
     );
     expect(read?.query.get("limit")).toBe("80");
+  });
+
+  it("SPEC-PD-016 I9 a list position the page saves under the folder in force names it, and Back restores it", async () => {
+    writeAppTarget("family", APP, FULL.id);
+    // A browser clamps the scroll position once the list has left the
+    // document, so it is readable only until then.
+    const onScreen = () => document.querySelector("[data-testid=file-grid]") !== null;
+    Object.defineProperty(window, "scrollY", { configurable: true, get: () => (onScreen() ? 640 : 0) });
+    try {
+      const page = await settled("?month=2026-10&date=2026-10-20");
+      await targetButton("Full");
+      await waitFor(() => expect(renderedIds()).toHaveLength(40));
+      page.unmount();
+      const state = loadState("family");
+      expect(state?.target).toBe(FULL.id);
+      expect(state?.list).toEqual({ loaded: 40, scrollY: 640 });
+
+      await settled("?month=2026-10&date=2026-10-20");
+      await targetButton("Full");
+      await waitFor(() => expect(renderedIds()).toHaveLength(40));
+      await waitFor(() => expect(h.scroll.calls).toContain(640));
+      const read = requests.find(
+        (r) =>
+          r.path === `${BASE}/photos` &&
+          libraryKey(r) === "full" &&
+          r.query.get("date") === "2026-10-20",
+      );
+      expect(read?.query.get("limit")).toBe("40");
+    } finally {
+      delete (window as any).scrollY;
+    }
   });
 
   it("SPEC-PD-016 a pin list and its position saved under the folder in force are restored under it", async () => {
