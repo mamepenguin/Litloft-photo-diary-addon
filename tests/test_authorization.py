@@ -12,6 +12,9 @@ DATA_ROUTES = [
     "/points",
     "/map-config",
     "/note?date=2026-10-03",
+    # SPEC-PD-018 section 6 and I6.
+    "/library/shelves?by=month",
+    "/library/shelf?by=month&key=2026-10",
 ]
 
 

@@ -20,7 +20,8 @@ def test_pd003_addon_is_registered_with_declared_metadata(env):
     assert addon["label"] == "Photo Diary"
     assert addon["scope"] == "drive"
     assert addon["href"] == "/addons/photo_diary"
-    assert addon["description"] == "Look back at your photos on a calendar and a map."
+    # SPEC-PD-018: the setup wizard shows this description.
+    assert addon["description"] == "Browse your photos as a library, on a calendar and on a map."
     assert not addon.get("policy_features")
     nav = addon["navigation"]
     assert nav["i18n_key"] == "photoDiary.nav.label"
