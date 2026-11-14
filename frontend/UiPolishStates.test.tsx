@@ -656,27 +656,23 @@ describe("SPEC-PD-012: the map's stage, and its inputs while they are read again
 
 // ---------------------------------------------------------------- the tabs
 
-describe("SPEC-PD-012: the view switch's place", () => {
+describe("SPEC-PD-017 I10: the view switch's place", () => {
   const widthOf = (px: number) => {
     layoutSpies.push(
       vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation((() => ({ top: 0, left: 0, right: px, bottom: 0, width: px, height: 0, x: 0, y: 0 })) as any),
     );
   };
 
-  it("is in the header's title row on a wide layout, and in its own row on a narrow one", async () => {
-    widthOf(1280);
-    await renderAt("?month=2026-10");
-    const header = document.querySelector("header") as HTMLElement;
-    const titleRow = header.querySelector("h1")!.closest("div.flex.min-w-0") as HTMLElement;
-    expect(titleRow.contains(screen.getByRole("tablist"))).toBe(true);
-    cleanup();
-
-    withoutLayout();
-    widthOf(375);
-    await renderAt("?month=2026-10");
-    const narrow = document.querySelector("header") as HTMLElement;
-    const row = narrow.querySelector("h1")!.closest("div.flex.min-w-0") as HTMLElement;
-    expect(row.contains(screen.getByRole("tablist"))).toBe(false);
-    expect(narrow.contains(screen.getByRole("tablist"))).toBe(true);
+  it("is in the header's tabs row, not the title row, on a wide and a narrow layout", async () => {
+    for (const px of [1280, 375]) {
+      withoutLayout();
+      widthOf(px);
+      await renderAt("?month=2026-10");
+      const header = document.querySelector("header") as HTMLElement;
+      const titleRow = header.querySelector("h1")!.closest("div.flex.min-w-0") as HTMLElement;
+      expect(titleRow.contains(screen.getByRole("tablist")), `${px}px`).toBe(false);
+      expect(header.contains(screen.getByRole("tablist")), `${px}px`).toBe(true);
+      cleanup();
+    }
   });
 });

@@ -1,5 +1,5 @@
 /**
- * SPEC-PD-012, and the page-level promises of SPEC-PD-010 and SPEC-PD-011:
+ * SPEC-PD-012 and SPEC-PD-017 I10, and the page-level promises of SPEC-PD-010 and SPEC-PD-011:
  * where the view switch sits, how tall the map is and what it touches, the
  * close control, and what the page asks the network for.
  */
@@ -20,19 +20,18 @@ async function open(page: Page, query: string, hash = "") {
 const stage = (page: Page) => page.locator("div[style*='100dvh']").first();
 const frame = (page: Page) => page.locator("[data-page-frame]");
 
-test.describe("SPEC-PD-012: the view switch", () => {
-  test("is at the right end of the title row on a wide layout", async ({ page }) => {
+test.describe("SPEC-PD-017 I10: the view switch", () => {
+  test("is in the tabs row under the title row on a wide layout", async ({ page }) => {
     await page.setViewportSize({ width: 1280, height: 800 });
     await open(page, "?month=2026-09");
     const tabs = page.getByRole("tablist");
     await expect(tabs).toBeVisible();
     const tabBox = (await tabs.boundingBox())!;
     const title = (await page.getByRole("heading", { level: 1 }).boundingBox())!;
-    const pageFrame = (await frame(page).boundingBox())!;
-    // The same row as the title, at the right end of the frame, inside its padding.
-    expect(tabBox.y).toBeLessThan(title.y + title.height);
-    expect(tabBox.y + tabBox.height).toBeGreaterThan(title.y);
-    expect(Math.abs(tabBox.x + tabBox.width - (pageFrame.x + pageFrame.width - 16))).toBeLessThan(2);
+    await expect(page.getByRole("button", { name: /^Target: / })).toBeVisible();
+    const target = (await page.getByRole("button", { name: /^Target: / }).boundingBox())!;
+    expect(tabBox.y).toBeGreaterThanOrEqual(title.y + title.height - 1);
+    expect(tabBox.y).toBeGreaterThanOrEqual(target.y + target.height - 1);
   });
 
   test("stays in its own row on a narrow layout, and the Japanese title is whole", async ({ page }) => {
@@ -43,21 +42,26 @@ test.describe("SPEC-PD-012: the view switch", () => {
     const title = page.getByRole("heading", { level: 1 });
     const tabBox = (await tabs.boundingBox())!;
     const titleBox = (await title.boundingBox())!;
+    await expect(page.getByRole("button", { name: /^対象: / })).toBeVisible();
+    const target = (await page.getByRole("button", { name: /^対象: / }).boundingBox())!;
     expect(tabBox.y).toBeGreaterThanOrEqual(titleBox.y + titleBox.height - 1);
+    expect(tabBox.y).toBeGreaterThanOrEqual(target.y + target.height - 1);
     expect(await title.evaluate((el) => el.scrollWidth <= el.clientWidth)).toBe(true);
   });
 
-  test("changes place when the layout crosses 48 rem, with the view kept", async ({ page }) => {
+  test("stays in the tabs row when the layout crosses 48 rem, with the view kept", async ({ page }) => {
     await page.setViewportSize({ width: 1280, height: 800 });
     await open(page, "?month=2026-09");
+    await expect(page.getByRole("button", { name: /^Target: / })).toBeVisible();
     await expect(page.getByRole("tablist")).toBeVisible();
-    await page.setViewportSize({ width: 600, height: 800 });
-    await expect.poll(async () => {
-      // The tab list is made again in its new place, so it is absent for a moment.
-      const t = await page.getByRole("tablist").boundingBox();
-      const title = await page.getByRole("heading", { level: 1 }).boundingBox();
-      return t !== null && title !== null && t.y >= title.y + title.height - 1;
-    }).toBe(true);
+    for (const width of [600, 1280]) {
+      await page.setViewportSize({ width, height: 800 });
+      await expect.poll(async () => {
+        const t = await page.getByRole("tablist").boundingBox();
+        const title = await page.getByRole("heading", { level: 1 }).boundingBox();
+        return t !== null && title !== null && t.y >= title.y + title.height - 1;
+      }).toBe(true);
+    }
     await expect(page.getByRole("tab", { name: "Calendar" })).toHaveAttribute("aria-selected", "true");
   });
 });
