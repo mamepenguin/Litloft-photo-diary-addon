@@ -57,7 +57,7 @@ Photo, capture date, undated photo: as `photo-diary.md`. The photo set under a t
   | `month` | one per capture month that holds a photo, and one for undated photos | `YYYY-MM`; `undated` | `""` | the month in the viewer's locale (`2026年11月` / `Nov 2026`), built from the key with no time zone conversion; 撮影日なし / No capture date |
   | `tag` | one per tag of the drive that a photo carries, and one for photos with no tag of the drive | the tag's name; `no_tag` | the name; `""` | the name; タグなし / No tag |
   | `collection` | one per collection of the drive that holds a photo, and one for photos in no collection of the drive | the collection's id; `no_collection` | the name; `""` | the name; コレクションなし / No collection |
-  | `folder` | the folder grouping below | below | the key's last segment; `""` for the drive's root | the label; the drive's name for `""` |
+  | `folder` | the folder grouping below | below | the key with a trailing `/` removed, then its last segment (`2026/` and `2026` both give `2026`); `""` for the root key `""` | the label; the drive's name for `""` |
 
 - **Folder grouping**, as the core's `GET /api/drives/{drive}/shelves?by=folder`. Stored
   `folder_path` values are NFC-normalised before anything is compared. The **base** starts
@@ -101,7 +101,7 @@ Photo, capture date, undated photo: as `photo-diary.md`. The photo set under a t
    | `view=calendar`, with or without `month`, `date`, `undated` | Calendar |
    | no `view`, with `month`, `date` or `undated=true` | Calendar (URLs made before this change) |
    | `view=map`, with or without the calendar's parameters | Map, as today |
-   | `view` of any other value | Library |
+   | `view` of any other value, or a query with no `view` and none of a real `month`, a real `date` or `undated=true` | Library; the URL is replaced with `?view=library` (no history entry); not a fresh start |
 
 2. The sidebar row and the Home entry go to the page with no query. A URL with no query is a
    fresh start, as today (`photo-diary.md`: the drive's saved state is cleared, at load and
@@ -110,16 +110,22 @@ Photo, capture date, undated photo: as `photo-diary.md`. The photo set under a t
    entry. Every later URL of the Library is `?view=library`, so going back to the Library,
    and reloading it, restore it (section 9 item 7).
 3. Tabs push URLs: ライブラリ pushes `?view=library`; カレンダー pushes `?view=calendar`
-   plus the `month`, `date` and `undated` the current URL holds (from the calendar or a map
-   URL that carries them); 地図 pushes `?view=map` plus those same parameters, as today.
-   Leaving for the Library drops them. Every URL the calendar produces (closing a list,
-   pressing a day, Today, moving month, a map section heading's day link, dropping
-   `undated`) carries `view=calendar`.
+   plus the calendar's `month`, `date` and `undated`; 地図 pushes `?view=map` plus those
+   same parameters, as today. The calendar's parameters are those of the last calendar URL
+   of this page visit (the current URL's when it is the calendar's or a map URL carrying
+   them), so Calendar (a month and an open day) → Library → Calendar shows the same month
+   and day again. The Library's URL carries none of them, and the hidden calendar keeps the
+   last calendar URL it was given: it neither redraws nor requests anything while the
+   Library is the face. Every URL the calendar produces (closing a list, pressing a day,
+   Today, moving month, a map section heading's day link, dropping `undated`) carries
+   `view=calendar`.
 4. Which face opens is not remembered: a URL with no query always opens the Library.
 5. Faces once shown stay mounted while hidden, as the calendar and the map do today: going
-   Library → Calendar → Library keeps the Library's loaded shelves and its scroll position
-   as the window had it. The in-place fresh start (a URL with no query reached while the
-   page stays mounted) rebuilds every face, the Library included, from its first page.
+   Library → Calendar → Library keeps the Library's loaded shelves without a request. A tab
+   switch does not move the window's scroll, as switching between the calendar and the map
+   does today (`scroll: false`). The in-place fresh start (a URL with no query reached
+   while the page stays mounted) rebuilds every face, the Library included, from its first
+   page.
 
 **Library face (019)**
 
@@ -139,7 +145,10 @@ Photo, capture date, undated photo: as `photo-diary.md`. The photo set under a t
    layout puts on a later line are not drawn. The first line is as the core lays it out
    (base line height 120px below a 40rem grid width, 200px at 40rem and wider); a shelf with
    fewer photos than fill a line keeps them at their size, unstretched, as the core's last
-   line. A photo opens the core's file page, as photos in the calendar's lists do.
+   line. A photo opens the core's file page, as photos in the calendar's lists do. Where
+   the core's grid does not justify (fewer than 2 photos, or under 90% of them with stored
+   dimensions, `deriveListMeta`), it draws its card grid, and the shelf shows that grid's
+   first row; the calendar's lists behave the same today.
 8. The ids of one page of shelves are read into file items once each (an id in several
    shelves is read once), in batch reads of at most 100 ids (`batchGetFiles`, as
    `usePagedPhotos` does). A page is drawn when all its reads have answered.
@@ -147,29 +156,37 @@ Photo, capture date, undated photo: as `photo-diary.md`. The photo set under a t
 10. Changing the classification or the sort saves it (item 6), redraws the shelves from the
     first page with no page load, and does not change the URL or add a history entry.
 11. The header's N is the photo count under the target, read as on the map
-    (`/calendar/months`, `app-target.md` item 2), on every entry to the Library and after a
-    target change.
+    (`/calendar/months`, `app-target.md` item 2), on every entry to the Library, after a
+    target change and after a write of item 17.
+11a. The Library's paging is the addon's own (`frontend/useLibraryPages.ts`): it can start
+    at a saved depth, re-read every loaded page keeping their number, and tell a 404 from
+    other failures. The core's `usePaged` is not used.
 
 **Shelf page (020)**
 
 12. See all goes to `/drive/{drive}/addons/photo_diary/shelf?by=<by>&key=<key>`, plus
     `&sort=oldest` when the sort in force is `oldest`. `key` is always present; it is empty
-    for the root folder shelf.
+    for the root folder shelf. A `sort` in the URL other than `oldest` is read as `newest`.
+    The page checks the URL before any request: a `by` other than the four, a missing `key`,
+    an empty `key` with `by` other than `folder`, or a `month` key that is neither a real
+    `YYYY-MM` nor `undated` shows the invalid-link state of section 2 at once, with the
+    title フォトダイアリー / Photo Diary, and sends nothing.
 13. The page draws the `AppHeader` with:
+    - the `Images` icon, as on the Library;
     - a back link フォトダイアリー / Photo Diary to `?view=library`;
     - the title: for `month`, `tag` and `folder`, from the URL's key as in Definitions,
-      drawn at once; for `collection`, the `label` of the page's first answer, an empty
-      title skeleton until it arrives, and コレクション / Collection when the read fails or
-      the label is empty;
+      drawn at once; for `collection`, the `label` of the page's first answer, `…` until it
+      arrives, and コレクション / Collection when the read fails or the label is empty;
     - the scope line `<drive> · N枚` / `<drive> · N photos` with N = the shelf's `total`,
       the drive name alone until it is known;
     - the Target, whose `currentCount` is the target's photo count read as in item 11
       (`null` until known);
     - the sort menu, quiet, as the core's shelf page places it (title row on a wide layout;
       below 640px its own row above the photos, right-aligned). No tabs.
-14. The page requests `GET /library/shelf` with the target, `by`, `key`, `sort`, `limit=60`
-    and `offset`, and draws the photos in capture order as the core's justified grid, all
-    lines, loading 60 more when the end nears.
+14. The page requests `GET /library/shelf` with the target, `by`, `key`, `sort`, `limit=40`
+    and `offset`, through `usePagedPhotos` as the calendar's lists do (its page size of 40
+    unchanged), and draws the photos in capture order as the core's justified grid, all
+    lines, loading 40 more when the end nears.
 15. Changing the sort on the shelf page replaces the URL's `sort` (no history entry) and
     reloads from the first page. It does not change the saved sort of item 6.
 16. The Target on the shelf page is the drive's one saved target (`app-target.md`). A target
@@ -180,7 +197,9 @@ Photo, capture date, undated photo: as `photo-diary.md`. The photo set under a t
     shelves it has loaded, keeping their number and the scroll position; the shelf page
     reads again every photo it has loaded and its total, keeping the depth and the scroll
     position. A photo that has left a shelf (moved to trash, to another drive, tag removed)
-    is gone after the re-read.
+    is gone after the re-read. The header's N (Library) and the Target's `currentCount`
+    (shelf page) are read again too. While a re-read runs, what is drawn stays; when it
+    fails, what is drawn stays and `LoadError` with retry appears above it, as the map does.
 
 **Backend (018)**
 
@@ -192,7 +211,8 @@ Photo, capture date, undated photo: as `photo-diary.md`. The photo set under a t
     count and the ids of its first `per_shelf` photos in capture order. A shelf with no
     photo is never returned.
 19. `GET /api/addons/photo_diary/library/shelf` takes the target parameters, `by`, `key`,
-    `sort`, `limit` (1–100, default 60) and `offset` (≥ 0). It answers
+    `sort` (default `newest`), `limit` (1–100, default 40) and `offset` (≥ 0, default 0).
+    It answers
     `{file_ids, total, label}`: the shelf's photos in capture order from `offset`, its photo
     count, and its label as in Definitions (for a collection, the collection's name when it
     exists on the drive, else `""`). A well-formed key with no photo under the target, or a
@@ -228,18 +248,23 @@ Photo, capture date, undated photo: as `photo-diary.md`. The photo set under a t
   tab, Back or Forward; the fresh start to the Library. Forbidden: a hidden face changing
   the URL or the face.
 - **Library**: target look-up running (no request, as `app-target.md` item 4); first page
-  loading (one untitled skeleton shelf); ready with shelves; ready with none (the core's
-  empty state); failed. Further pages: idle, loading (a skeleton shelf below), failed
-  (retry below). Allowed: any state to first page loading on a change of target,
-  classification or sort, or a fresh start; failed to loading by retry. Forbidden: a change
-  of classification or sort pushing or replacing a URL; drawing an answer to an earlier
-  target, classification or sort.
+  loading (one untitled skeleton shelf); ready with shelves; ready with none (empty, section
+  9 item 5); failed (retry; also the 400 of section 2); not available (404, the page's
+  "not available"); re-reading after a write (what is drawn stays; ends in ready, or in
+  ready with `LoadError` above). Further pages: idle, loading (a skeleton shelf below),
+  failed (retry below; drawn shelves stay). Allowed: any state but not available to first
+  page loading on a change of target, classification or sort, or a fresh start; failed to
+  loading by retry; ready or empty to re-reading by a write. Forbidden: a change of
+  classification or sort pushing or replacing a URL; drawing an answer to an earlier
+  target, classification or sort; leaving not available except by a fresh start.
 - **Classification and sort**: one of four and one of two, per drive. Forbidden: the shelf
   page's sort writing the saved sort.
-- **Shelf page**: target look-up running; loading; ready; empty; failed (retry); invalid
-  link (422, no retry); further pages as the Library. Allowed: any state to loading on a
-  change of target or sort. Forbidden: invalid link to loading by any control on the page
-  other than a target change.
+- **Shelf page**: invalid link (checked from the URL, or a 422; no retry); target look-up
+  running; loading; ready; empty; failed (retry, also a 400); not available (404);
+  re-reading after a write (as the Library); further pages as the Library. Allowed: ready,
+  empty or failed to loading on a change of target or sort; ready or empty to re-reading by
+  a write. Forbidden: invalid link to loading by any control on the page; a sort change
+  adding a history entry or writing the saved sort.
 - A change of target, classification or sort shows nothing of the previous choice from that
   moment, also while the new answer loads and after it fails.
 
@@ -253,12 +278,18 @@ Photo, capture date, undated photo: as `photo-diary.md`. The photo set under a t
 - `sessionStorage` `photo_diary:state:<drive>` (the existing key and its encoding): the
   Library adds `library: {loaded, scrollY, by, sort}`, the number of shelf pages loaded,
   the scroll position, and the classification and sort they were recorded under, beside the
-  existing `target`. On restore they are applied only when `by` and `sort` equal those in
-  force from `localStorage` and the target matches (`app-target.md` item 8); otherwise the
-  Library starts from its first page at the top.
+  existing `target` (`sanitize` in `lib/savedState.ts` keeps the new field). It is applied
+  only when the page loads at `?view=library` (Back, a reload, the shelf page's back link),
+  never when the Library is first shown by its tab, and only when `by` and `sort` equal
+  those in force from `localStorage` and the target matches (`app-target.md` item 8);
+  otherwise the Library starts from its first page at the top. Leaving the page from the
+  Library writes it; the calendar's list position is not written from the Library.
 - `sessionStorage` `photo_diary:shelf:<drive>` (same encoding), one entry per drive:
-  `{by, key, sort, target, loaded, scrollY}` of the last shelf page left. It is restored
-  only when `by`, `key`, `sort` and the target in force all equal it.
+  `{by, key, sort, target, loaded, scrollY}` of the last shelf page left. Pressing See all
+  removes it before navigating, so See all always opens a shelf from its first page; Back
+  and a reload of the shelf page restore it when `by`, `key`, `sort` and the target in
+  force all equal it. A fresh start (a URL with no query) removes it with the drive's other
+  saved state.
 - No table, no write to the core.
 
 ### 5. External services
@@ -298,7 +329,10 @@ ones.
 1. Tabs ライブラリ | カレンダー | 地図 / Library | Calendar | Map, in that order, in the tabs
    row at every width.
 2. Library controls: 分類 / Group by and 並べ替え / Sort as menus with the value shown, in
-   one row under the tabs row at every width.
+   one row under the tabs row at every width. The sort button shows its value only
+   (新しい順 / Newest first, 古い順 / Oldest first) at every width, on the Library and on
+   the shelf page; its accessible name is `並べ替え: <value>` / `Sort: <value>`. Both menus
+   are radio lists with the value in force checked.
 3. Shelf titles and counts as Definitions; See all on every shelf, also on a shelf whose
    photos all fit in its line.
 4. The design's checked lines:
@@ -314,7 +348,8 @@ ones.
      the sort in its own right-aligned row above the photos; photos as the core's justified
      grid, all lines.
    - The classification menu: a radio list of the four, the one in force checked.
-5. Empty Library (no photo under the target): the core's empty state.
+5. Empty Library (no photo under the target): the core's `EmptyState` with the `Images`
+   icon and the title 写真はありません / No photos, no description.
 6. Shelf page header as item 13.
 7. Going back from a photo opened in the Library returns to the Library with the same
    classification and sort, the same shelves loaded and the same scroll position; the same
@@ -339,8 +374,8 @@ ones.
 - WebSocket events: none emitted or consumed.
 - Internal API: not used or changed.
 - Addon boundary: core code is not changed. Beyond what Photo Diary imports today, the
-  frontend imports `RetryButton`, `usePaged` and `useNearEnd` from `components/appshell/`
-  and `EmptyState`; it imports nothing from the Video app's `components/videoapp/`.
+  frontend imports `RetryButton` and `useNearEnd` from `components/appshell/` and
+  `EmptyState`; it imports nothing from the Video app's `components/videoapp/`.
 - i18n: addon messages only.
 
 ## Touch points
@@ -348,7 +383,9 @@ ones.
 Addon repository (`mamepenguin/Litloft-photo-diary-addon`):
 
 - `backend/router.py`: `GET /library/shelves`, `GET /library/shelf`; capture order; month,
-  tag, collection and folder grouping; key parsing.
+  tag, collection and folder grouping; key parsing; `ADDON_META.description` becomes
+  "Browse your photos as a library, on a calendar and on a map." (shown by the core's
+  setup wizard).
 - `backend/schemas.py`: response models for the two routes.
 - `frontend/PhotoDiaryPage.tsx`: the third tab, the Library face, the fresh start replacing
   the URL with `?view=library`, the count on the Library.
@@ -356,7 +393,8 @@ Addon repository (`mamepenguin/Litloft-photo-diary-addon`):
   `buildPageQuery` writes `view=calendar` for calendar URLs and `view=library`.
 - `frontend/CalendarView.tsx`, `frontend/MapView.tsx`, `frontend/SectionedGrids.tsx`: every
   calendar URL they produce carries `view=calendar`.
-- New: `frontend/LibraryFace.tsx`, `frontend/LibraryControls.tsx`,
+- New: `frontend/useLibraryPages.ts`, `frontend/LibraryFace.tsx`,
+  `frontend/LibraryControls.tsx`,
   `frontend/PhotoShelf.tsx` (one shelf: heading and first line), `frontend/lib/library.ts`
   (titles, key forms, storage), `frontend/pages/shelf.tsx` (sub-page),
   `frontend/ShelfPage.tsx`.
@@ -375,7 +413,7 @@ Addon repository (`mamepenguin/Litloft-photo-diary-addon`):
 - `docs/reviews/library/`: design, review and R-5 records.
 
 Core repository: no change. Core names the addon frontend uses, read only:
-`@/components/appshell/{AppHeader,RetryButton,usePaged,useNearEnd,useLoad}`,
+`@/components/appshell/{AppHeader,RetryButton,useNearEnd,useLoad}`,
 `@/components/EmptyState`, `@/components/FileGrid`, `@/components/PageFrame`,
 `@/components/PageTabs`, `@/lib/api` (`batchGetFiles`, `getSmartFolders`),
 `@/lib/appPrefs`, `@/lib/appTarget`. Core backend names: `app.models` (`File`, `FileExif`,
@@ -432,11 +470,20 @@ or another classification or sort.
 I10. The classification and sort chosen on a drive are in force on that drive's next load
 and not on another drive's; a sort changed on the shelf page changes neither.
 
-I11. A shelf on the Library draws one line of photos at their own proportions, with no
-second line and no photo cut at the edge, measured in a real browser at 375px, 768px and
-1280px; See all carries `sort=oldest` exactly when that sort is in force.
+I11. A shelf on the Library whose photos the core's grid justifies draws one line of photos
+at their own proportions, with no second line and no photo cut at the edge, measured in a
+real browser at 375px, 768px and 1280px; See all carries `sort=oldest` exactly when that
+sort is in force.
 
 I12. While only the Library or the shelf page has been opened, no map tile is requested.
+
+I13. After a write through the context menu, a photo that has left a shelf is gone from the
+Library and the shelf page, their loaded depth and scroll position are kept, and a failed
+later page or re-read leaves what was drawn on screen.
+
+I14. Calendar (a month and an open day) → Library → Calendar shows the same month and day,
+and Library → Calendar → Library shows the Library's shelves without a new request; on the
+shelf page a sort change replaces the URL without a history entry.
 
 ## Revises
 
@@ -467,5 +514,10 @@ SPEC-PD-008 I3. The fade runs when another month is drawn on screen by the viewe
   inventory; `pages/shelf.tsx` adds nothing to a core list.
 - **Horizontal scrolling shelves, or "N more" on a shelf.** The Video app uses one line and
   See all; the same here.
+- **Invariant for batch-read sizing (item 8).** Not an invariant: a breach fails loudly
+  (the core answers 422 above 100 ids) and the page tests cover it.
+- **A single photo or unmeasured photos in a shelf.** The core's grid draws its card grid
+  there (item 7); changing that is a core change, and the calendar's lists already live
+  with it.
 - **A Library URL holding the classification and sort.** The Video app keeps them in
   `localStorage` only; doing the same keeps Back from adding steps for each menu choice.
