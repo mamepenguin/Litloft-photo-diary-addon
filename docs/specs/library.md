@@ -4,7 +4,7 @@ SPEC-ID: SPEC-PD-018
 SPEC-ID: SPEC-PD-019
 SPEC-ID: SPEC-PD-020
 
-Approval: sha256:92e8a41ef714044c7cff00dc3ddf9f49bd42d20219166633630f0d9f1ec9f812 Yuichi Senga 2026-11-15
+Approval:
 
 ## Summary
 
@@ -125,7 +125,9 @@ Photo, capture date, undated photo: as `photo-diary.md`. The photo set under a t
    nothing was written in between. After a write through the context menu on another face
    (the calendar's or the map's photo lists), returning to the Library reads again every
    page of shelves it has loaded, as item 17 does, keeping their number and the scroll
-   position. A tab
+   position. The other way round is the same: after a write through the context menu on
+   the Library's photos, returning to the calendar or the map reads again the photo list
+   open there, keeping its depth. A tab
    switch does not move the window's scroll, as switching between the calendar and the map
    does today (`scroll: false`). The in-place fresh start (a URL with no query reached
    while the page stays mounted) rebuilds every face, the Library included, from its first
@@ -488,7 +490,8 @@ later page or re-read leaves what was drawn on screen.
 I14. Calendar (a month and an open day) → Library → Calendar shows the same month and day,
 and Library → Calendar → Library shows the Library's shelves without a new request when
 nothing was written on the calendar or the map in between, and with the written photo's change
-after a write there; on the
+after a write there, and Library → Calendar shows an open day's list with the change of a
+photo written on the Library; on the
 shelf page a sort change replaces the URL without a history entry.
 
 ## Revises
