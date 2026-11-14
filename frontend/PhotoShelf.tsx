@@ -12,6 +12,9 @@ import { shelfHref, shelfTitle, photoCountText, type Classification, type Shelf,
  * Keeps only the grid's first line. The core's grid wraps by itself, so the
  * line is whatever the layout put on the first row; a card grid, which the core
  * draws when it cannot justify, keeps its first row the same way.
+ *
+ * The grid's tail keeps a last line unstretched, so it is hidden with the cells
+ * after the drawn line: on that line it would take the stretch they are owed.
  */
 function useFirstLine(signature: string) {
   const host = useRef<HTMLDivElement | null>(null);
@@ -23,16 +26,23 @@ function useFirstLine(signature: string) {
       const justified = element.querySelector<HTMLElement>(".justified-grid");
       const container = justified ?? (element.firstElementChild as HTMLElement | null);
       if (!container) return;
+      const tail = justified?.querySelector<HTMLElement>(":scope > .justified-grid-tail") ?? null;
       const cells = Array.from(container.children).filter(
         (child): child is HTMLElement =>
           child instanceof HTMLElement && !child.classList.contains("justified-grid-tail"),
       );
       for (const cell of cells) cell.hidden = false;
+      if (tail) tail.hidden = false;
       if (cells.length < 2) return;
       const first = cells[0].offsetTop;
+      let wrapped = false;
       for (const cell of cells) {
-        if (cell.offsetTop !== first) cell.hidden = true;
+        if (cell.offsetTop !== first) {
+          cell.hidden = true;
+          wrapped = true;
+        }
       }
+      if (tail) tail.hidden = wrapped;
     };
     apply();
     if (typeof ResizeObserver === "undefined") return;

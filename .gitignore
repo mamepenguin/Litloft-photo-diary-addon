@@ -8,3 +8,4 @@ e2e/fixture/bundle.js
 test-results/
 e2e/fixture/page.js
 e2e/fixture/page.css
+e2e/fixture/shelf.js

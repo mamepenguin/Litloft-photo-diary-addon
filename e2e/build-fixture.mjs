@@ -1,9 +1,12 @@
-// Bundles two fixtures with the vite and the tailwind that the core checkout's
-// frontend/ installs:
+// Bundles three fixtures with the vite and the tailwind that the core
+// checkout's frontend/ installs:
 //   fixture/bundle.js   the addon's map module alone (entry.ts)
 //   fixture/page.js     the real page, with a stand-in router, drive and file
 //                       grid (page/entry.tsx), and fixture/page.css, the
 //                       core's stylesheet compiled over the addon's sources.
+//   fixture/shelf.js    the real shelf over the core's own justified grid
+//                       (shelf/entry.tsx), which the stand-in grid cannot
+//                       stand in for.
 // The page's stylesheet needs the link tree that ./setup-addons.sh makes,
 // which is where tailwind finds the addon's classes.
 import { execFileSync } from "node:child_process";
@@ -37,6 +40,17 @@ export default async function buildFixture() {
     { find: /^@\/components\/AddonSlotsProvider$/, replacement: join(here, "fixture/page/addonSlots.ts") },
     { find: "@", replacement: join(coreFrontend, "src") },
   ];
+  // The shelf fixture measures the grid's own line, so it keeps the core's
+  // grid; an earlier entry wins over the stand-in above. The grid's context
+  // menu renders an addon slot, which would load every installed addon.
+  const realFileGrid = {
+    find: /^@\/components\/FileGrid$/,
+    replacement: join(coreFrontend, "src/components/FileGrid.tsx"),
+  };
+  const noAddonSlot = {
+    find: /^@\/components\/AddonSlot$/,
+    replacement: join(here, "fixture/page/addonSlot.tsx"),
+  };
   const common = {
     root: here,
     configFile: false,
@@ -44,11 +58,11 @@ export default async function buildFixture() {
     plugins: [corePackages],
     esbuild: { jsx: "automatic" },
     define: { "process.env.NODE_ENV": '"production"' },
-    resolve: { alias },
   };
-  const bundle = (entry, name) =>
+  const bundle = (entry, name, alias) =>
     build({
       ...common,
+      resolve: { alias },
       build: {
         outDir: join(here, "fixture"),
         emptyOutDir: false,
@@ -63,8 +77,9 @@ export default async function buildFixture() {
       },
     });
 
-  await bundle("fixture/entry.ts", "bundle");
-  await bundle("fixture/page/entry.tsx", "page");
+  await bundle("fixture/entry.ts", "bundle", alias);
+  await bundle("fixture/page/entry.tsx", "page", alias);
+  await bundle("fixture/shelf/entry.tsx", "shelf", [realFileGrid, noAddonSlot, ...alias]);
 
   execFileSync(
     join(coreFrontend, "node_modules/.bin/tailwindcss"),
