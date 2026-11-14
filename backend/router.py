@@ -6,19 +6,21 @@ owns no table and writes nothing.
 
 import os
 import re
+from dataclasses import dataclass
 from datetime import date as calendar_date
 from pathlib import Path
 from urllib.parse import unquote
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request
 from fastapi.responses import FileResponse
-from sqlalchemy import and_, case, func, or_, select
+from sqlalchemy import and_, case, false, func, or_, select
 from sqlalchemy.orm import Session
 
 import app.config as config
 from app.auth import check_drive_access, get_unlocked_groups
 from app.database import get_db
 from app.models import File, FileExif, active_file_filter
+from app.routers.drives import filtered_drive_files
 
 from .schemas import (
     CalendarDaysResponse,
@@ -107,6 +109,45 @@ def _drive_scope(
     return drive
 
 
+@dataclass(frozen=True)
+class _Target:
+    search: str | None
+    tag: list[str] | None
+    folder: list[str] | None
+    collection: list[str] | None
+    size: list[str] | None
+    favorite: bool | None
+    liked: bool | None
+    none: bool
+
+    def given(self) -> bool:
+        return bool(
+            self.search
+            or self.tag
+            or self.folder
+            or self.collection
+            or self.size
+            or self.favorite is not None
+            or self.liked is not None
+        )
+
+
+def _target(
+    search: str | None = Query(default=None, max_length=200),
+    tag: list[str] | None = Query(default=None),
+    folder: list[str] | None = Query(default=None),
+    collection: list[str] | None = Query(default=None),
+    size: list[str] | None = Query(default=None),
+    favorite: bool | None = Query(default=None),
+    liked: bool | None = Query(default=None),
+    none: bool = Query(default=False),
+) -> _Target:
+    target = _Target(search, tag, folder, collection, size, favorite, liked, none)
+    if target.none and target.given():
+        raise HTTPException(status_code=422, detail="none excludes a target")
+    return target
+
+
 # The first 10 characters of datetime_original are the capture date when SQLite
 # reads them back as the same calendar date. date() rewrites an impossible day
 # such as 02-30, and returns NULL for 00 months or text, so equality rejects both.
@@ -144,6 +185,27 @@ def _photos(drive: str):
     )
 
 
+def _photo_query(db: Session, drive: str, target: _Target):
+    query = _photos(drive)
+    if target.none:
+        return query.where(false())
+    if not target.given():
+        return query
+    listing, _ = filtered_drive_files(
+        db,
+        drive,
+        search=target.search,
+        favorite=target.favorite,
+        liked=target.liked,
+        tag=target.tag,
+        type=["image"],
+        folder=target.folder,
+        collection=target.collection,
+        size=target.size,
+    )
+    return query.where(File.id.in_(listing.with_entities(File.id)))
+
+
 def _count(db: Session, query) -> int:
     return db.scalar(select(func.count()).select_from(query.subquery())) or 0
 
@@ -176,17 +238,22 @@ def _note_dates(drive: str, glob_date: str = _DATE_GLOB):
 
 
 @router.get("/calendar/months", response_model=CalendarMonthsResponse)
-def calendar_months(drive: str = Depends(_drive_scope), db: Session = Depends(get_db)):
+def calendar_months(
+    drive: str = Depends(_drive_scope),
+    target: _Target = Depends(_target),
+    db: Session = Depends(get_db),
+):
+    query = _photo_query(db, drive, target)
     month = func.substr(_DAY, 1, 7)
     rows = db.execute(
-        _photos(drive).with_only_columns(month, func.count()).where(_IS_DATED).group_by(month)
+        query.with_only_columns(month, func.count()).where(_IS_DATED).group_by(month)
     ).all()
     counts = {m: c for m, c in rows}
     for note_month in db.scalars(
         _note_dates(drive).with_only_columns(func.substr(_NOTE_DATE, 1, 7)).distinct()
     ):
         counts.setdefault(note_month, 0)
-    undated = _count(db, _photos(drive).where(~_IS_DATED))
+    undated = _count(db, query.where(~_IS_DATED))
     return CalendarMonthsResponse(
         months=[MonthCount(month=m, count=counts[m]) for m in sorted(counts, reverse=True)],
         undated_count=undated,
@@ -197,10 +264,11 @@ def calendar_months(drive: str = Depends(_drive_scope), db: Session = Depends(ge
 def calendar_days(
     month: str = Query(pattern=_MONTH_PATTERN),
     drive: str = Depends(_drive_scope),
+    target: _Target = Depends(_target),
     db: Session = Depends(get_db),
 ):
     rows = db.execute(
-        _photos(drive)
+        _photo_query(db, drive, target)
         .with_only_columns(_DAY, func.count())
         .where(_IS_DATED, func.substr(_DAY, 1, 7) == month)
         .group_by(_DAY)
@@ -255,26 +323,32 @@ def photos(
     limit: int = Query(default=40, ge=1, le=100),
     offset: int = Query(default=0, ge=0),
     drive: str = Depends(_drive_scope),
+    target: _Target = Depends(_target),
     db: Session = Depends(get_db),
 ):
     if (date is None) == (not undated):
         raise HTTPException(
             status_code=422, detail="Give exactly one of date and undated=true"
         )
+    query = _photo_query(db, drive, target)
     if date is not None:
-        query = _photos(drive).where(_IS_DATED, _DAY == _real_date(date))
+        query = query.where(_IS_DATED, _DAY == _real_date(date))
         order = _DATED_ORDER
     else:
-        query = _photos(drive).where(~_IS_DATED)
+        query = query.where(~_IS_DATED)
         order = _UNDATED_ORDER
     ids = db.scalars(query.order_by(*order).limit(limit).offset(offset)).all()
     return PhotoIdsResponse(file_ids=list(ids), total=_count(db, query))
 
 
 @router.get("/points", response_model=PointsResponse)
-def points(drive: str = Depends(_drive_scope), db: Session = Depends(get_db)):
+def points(
+    drive: str = Depends(_drive_scope),
+    target: _Target = Depends(_target),
+    db: Session = Depends(get_db),
+):
     rows = db.execute(
-        _photos(drive)
+        _photo_query(db, drive, target)
         .with_only_columns(
             File.id,
             FileExif.gps_lat,
