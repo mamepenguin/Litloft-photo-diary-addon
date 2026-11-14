@@ -3,14 +3,177 @@
 spec: docs/specs/app-target.md
 
 ran_in_app: yes
-at: 0345d1473ad0f82fb795120d83c307ec754b8b54
+at: 83c70627cd9631b92239a026a70677e971bf91fb
 by: agent
 evidence: |
-  Second R-5 run, after the fixes for code-r1 (F1-F5). Three checkers (layout, target, map) drove one scratch stack at the same time (compose project litloft-r5-apphdr, port 3994), each in its own Playwright browser context, without changing server state; the stack was started and stopped by the author, who also added the smart folder `Videos only` (type:video) as fixture. Every item passed. Records below; screenshots in screenshots/r2/.
+  Third R-5 run, map only, after the fixes for code-r2 (T1, N1, N2); one checker on the scratch stack (litloft-r5-apphdr, port 3994) started and stopped by the author. Every item passed: an untouched map keeps its first view across an empty target and across a failed read and retry; no tile-failure notice after a retry; the second run's map items unchanged. The fixture's targets share the same three places, so keeping the view and fitting again give the same numbers; the unit tests for N1 tell them apart. Record below; screenshots in screenshots/r3/. The layout and calendar did not change since the second run (at 0345d14), whose record follows.
 pending: |
   Real phone, LAN and live tile delivery (agent_cannot_verify).
 
 decision:
+
+## Third run (map only)
+
+# R-5 (third run, map2) — Photo Diary Target / header, map items
+
+- Core checkout: `504a25892a45b42a7b1d3a29e2a77767d696beef`
+- Addon `addons/photo_diary`: working tree HEAD `c00056e` = `83c7062` (the change under test) + a docs-only
+  commit (`docs/reviews/app-target/{code-r3.md,decisions.md,design-check.md}`); no code differs from
+  `83c7062`. Recorded against `83c7062`.
+- Stack: `http://localhost:3994` (compose project `litloft-r5-apphdr`), used as prepared. Nothing was
+  started, stopped, rebuilt or written. No smart folder, tag, note, rescan or policy was changed; the
+  only writes were target choices in my own disposable browser contexts (`localStorage`) and the
+  `page.route` 500 served inside my browser.
+- Browser: Playwright 1.58.2 Chromium (`frontend/node_modules/@playwright/test`), launched with
+  `--use-gl=angle --use-angle=swiftshader --enable-unsafe-swiftshader`; 1280x800, locale `ja-JP`,
+  `NEXT_LOCALE=ja` cookie, a fresh context per run.
+- Scripts: `.r5/pd2/map2/{lib2.cjs,item1.cjs,item2-persist.cjs,item3.cjs,item3b-state.cjs,probe-tiles.cjs}`.
+  Every captured state appended one JSON line to `.r5/pd2/map2/manifest.jsonl` (20 lines, one per
+  state) with state name, viewport, screenshot path and the DOM measurements. Screenshots in `.r5/pd2/map2/` with the
+  `pd2-map2-` prefix.
+- How centre and zoom were read (same method as the second run): `sessionStorage["photo_diary:state:main"]`
+  (`center`, `zoom`, `target`), written by the page from the map's own callbacks, and each pin's
+  `transform: translate(x,y)` expressed as an offset from the map rect's centre (stable when the map
+  narrows for an open pin list). Plus: vector-tile responses (`vector.openstreetmap.org`, status) and
+  the presence of the tile-error string 「地図を読み込めません」 anywhere in the page text.
+- Drive `main` as given: 48 images, `Trips photos` 12, `Photos` 42, `Videos only` 0, 32 located photos
+  in three places (Tokyo, Kyoto, Hakodate).
+
+## 1. First fit only: `Videos only` then `Trips photos`; and a failed read then retry
+
+States: `01-item1-first-draw-untouched`, `02-item1-videos-only`, `03-item1-trips-after-videos`,
+`04-item1-points-500`, `05-item1-retry-drew`.
+
+- Default first draw (map not touched at all: no pan, zoom, pin click or window resize; only the
+  header's Target menu was opened afterwards): N `· 48枚`, 3 pins `写真 11枚` / `写真 11枚` / `写真 10枚`,
+  map 1040x609.6 at (240, 190.4), saved view center `[138.24721944444445, 38.47136064500543]`,
+  zoom `5.38684785113903`. Pin offsets from the map centre: Tokyo `(+90.42, +208.39)`,
+  Hakodate `(+147.54, -256.77)`, Kyoto `(-147.55, +257.17)` (`pd2-map2-01-item1-first-draw-untouched.png`).
+- Chose `Videos only`: N `· 0枚`, 「位置情報のある写真はありません」, no `.maplibregl-map` and no canvas,
+  0 pins; the saved state still held the first view's center/zoom (`pd2-map2-02-item1-videos-only.png`).
+- Chose `Trips photos` without touching the map: N `· 12枚`, 3 pins `写真 3枚` / `写真 4枚` / `写真 3枚`
+  = 10 located, saved view center `[138.24721944444445, 38.47136064500543]`, zoom `5.38684785113903`
+  — **identical to the digits** to the first draw; the pins sit at the first view's offsets
+  (Tokyo `+90.42 / +208.39` = 4枚, Hakodate `+147.54 / -256.77` = 3枚, Kyoto `-147.55 / +257.17` = 3枚),
+  all three inside the map (`pd2-map2-03-item1-trips-after-videos.png`). The map was really re-created
+  and redrawn: the vector-tile log went 6 tiles (first draw) → 12 tiles (after `Videos only` →
+  `Trips photos`, i.e. 6 fetched again) → 18 tiles (after the retry), all 200.
+- Failed read: `page.route("**/api/addons/photo_diary/points*")` answered **500 once**, then the target
+  was changed to `Photos`. The intercepted request was
+  `…/api/addons/photo_diary/points?folder=Photos` (the new target's parameters). The state:
+  `対象: Photos`, N `· 42枚`, map area shows 「読み込めませんでした」 with a `再試行` button, **no map**
+  (no `.maplibregl-map`/canvas), 0 pins, nothing of the previous target on screen
+  (`pd2-map2-04-item1-points-500.png`). The map was still untouched up to here.
+- Pressed `再試行`: the map came back with 3 pins `写真 11枚 / 写真 11枚 / 写真 10枚`, map 1040x609.6,
+  canvas 1040x610, 「© OpenStreetMap contributors」 drawn, no load error
+  (`pd2-map2-05-item1-retry-drew.png`). Saved view center `[138.24721944444445, 38.47136064500543]`,
+  zoom `5.38684785113903`, and the pin offsets `+90.42/+208.39`, `+147.54/-256.77`, `-147.55/+257.17`
+  are the first view's — identical to `01` and `03` (same centre, same zoom, same offsets).
+- **Caveat on "it does not fit again".** Every target on this drive locates photos in the same three
+  places, so a fresh fit of `Trips photos` (three pins) or of `Photos` gives exactly the numbers of the
+  default first fit. The observation is therefore "the view after the change equals the first view",
+  which is what the item asks, but equality alone cannot prove that no fit ran: a fit of the same places
+  would land on the same centre and zoom. Nothing in the captured states distinguishes the two. What I
+  can say is that no different view was ever drawn and no pin moved.
+
+## 2. Tile-failure notice after the successful retry
+
+States: `17-item2-first-draw`, `18-item2-points-500`, `19-item2-retry`, `20-item2-retry-after-12s`
+(an independent repeat of the same sequence; `05` is the same state in item 1's run).
+
+- After the retry the map drew 18 vector tiles from `vector.openstreetmap.org/shortbread_v1/…` with
+  status 200 and **0 failed**, and the downloaded map is on screen (labels, coastline, attribution) in
+  `pd2-map2-19-item2-retry.png` and `pd2-map2-05-item1-retry-drew.png`.
+- 「地図を読み込めません」 was not in the page text in the retry state (`tileError: null`, zero matching
+  DOM nodes), and not at any of 20 samples taken every 600 ms over the following 12 s
+  (`anyTileErrorInPoll: false`); the canvas stayed present and the 3 pins stayed drawn. The state after
+  those 12 s (N `· 42枚`, centre/zoom unchanged) is `pd2-map2-20-item2-retry-after-12s.png`.
+- In the failed state (`18`) the 500 was the load error 「読み込めませんでした」 with `再試行`, not the
+  tile notice; `04` shows the same.
+
+## 3. Second run's map items, repeated
+
+### 3a. Zoomed view + open pin list, then a target change
+
+States: `06-item3-first-draw`, `07-item3-zoomed`, `08-item3-pin-list-open`, `09-item3-trips-after-change`.
+
+- Default first draw: N `· 48枚`, 3 pins 11/11/10, saved view `[138.24721944444445, 38.47136064500543]`
+  / `5.38684785113903`.
+- Wheeled 3 notches anchored on the Tokyo pin: 1 pin `写真 11枚` at offset `(+91.36, +209.39)` on a
+  1040x609.6 map; saved view `[139.2483566336723, 36.64074130701438]` / `6.951514216302286`
+  (`pd2-map2-07-item3-zoomed.png`).
+- Clicked that pin: pin list opened with 11 items, map narrowed to 688x609.6, the same pin at
+  `(+91.36, +209.39)`; saved view unchanged (`pd2-map2-08-item3-pin-list-open.png`).
+- Chose `Trips photos`: `対象: Trips photos`, N `· 12枚`, the pin list is **closed** (0 `?file=` links),
+  map back to 1040x609.6, one pin `写真 4枚` at `(+91.36, +209.39)`; saved view
+  `[139.2483566336723, 36.64074130701438]` / `6.951514216302286`, identical to before the change
+  (`pd2-map2-09-item3-trips-after-change.png`).
+- The other two clusters are outside this kept view, so they are not drawn — the kept zoom, not a
+  missing pin (the same target's 3-pin fit is seen in 3b).
+
+### 3b. A map with no view of its own fits a target chosen after `Videos only`
+
+States: `10-item3b-videos-preset`, `11-item3b-trips-after-videos`,
+`12-item3b-trips-fresh-first-draw` (reference), plus `13`-`16` below.
+
+- Fresh context whose saved target was `Videos only` before the page loaded: `対象: Videos only`,
+  N `· 0枚`, 「位置情報のある写真はありません」, no map, no canvas, **no saved view** (`savedView: null`)
+  (`pd2-map2-10-item3b-videos-preset.png`).
+- Chose `Trips photos`: N `· 12枚`, the map was drawn 1040x609.6 with 3 pins `写真 3枚 / 写真 4枚 /
+  写真 3枚` (10 photos), **all three inside the map**, offsets `(+147.54, -256.77)`, `(+90.42, +208.39)`,
+  `(-147.55, +257.17)` (`pd2-map2-11-item3b-trips-after-videos.png`).
+- Reference, a fresh context whose first draw is under `Trips photos`: the same three offsets, all pins
+  in view, and a stored view of centre `[138.24721944444445, 38.47136064500543]`, zoom
+  `5.38684785113903` (`pd2-map2-12-item3b-trips-fresh-first-draw.png`). The two offset lists are
+  identical, so the map created after the empty target fitted its pins the same way a first draw does
+  (`11` stores no view of its own, so its centre/zoom are read from those offsets against the reference's
+  stored numbers).
+- Observed difference in the same state, not named by my items: the map created after the empty target
+  never wrote its fitted view to the saved state (`11`: `savedView: null`), while the first-draw
+  reference did (`12`: centre/zoom above, target `9wtPuwywyItx`). I polled `sessionStorage` 16 times
+  over 12 s in a repeat of this path (`14-item3b-state-after-fit-12s`) — still `null` — and then
+  wheel-zoomed; that wrote the state (`15-item3b-state-zoomed`: `[139.518724803012, 40.19325313539093]`
+  / `6.4299587612478675`), and an in-page switch Calendar → Map restored the zoomed view
+  (`16-item3b-state-back-to-map`, same numbers, pin offset `(+148.12, -256.41)`).
+  So the fitted view of a map re-created after an empty target is not persisted until the viewer moves
+  the map. I saw no user-visible consequence in this fixture, because the only view that state would
+  restore is the fit itself (returning re-fits to the same place); I did not produce a case where the
+  two differ (the next section).
+
+## Could not check
+
+- Whether item 1's kept view is "restored" rather than "re-fitted": impossible to separate on this
+  drive, where every target's located photos are the three same places, so a fit equals the first view.
+  The equality is reported as the item states it; a fit cannot be ruled out from the numbers.
+- A user-visible consequence of `savedView: null` after a map re-created from an empty target: with this
+  fixture the restored view and a re-fit coincide, so Back-from-a-photo or a tab switch looks the same
+  either way. A drive where a target holds pins in other places would show it.
+- Tiles, pins and thumbnails over the real home LAN, a real phone, iOS (`PROJECT.md`
+  `agent_cannot_verify`).
+- Other checkers' items (layout, header, calendar, target menu) — not this role's items.
+- Server state was not touched: all smart folders, tags, notes and policies were left as given; the
+  500s were answered by `page.route` inside my browser.
+
+## Verdict per item
+
+PASS 1. At 1280x800 with the default target the untouched first draw had centre
+`[138.24721944444445, 38.47136064500543]` / zoom `5.38684785113903`; after `Videos only` (no map) and
+then `Trips photos` the map came back at the same centre, same zoom and the same pin offsets; after a
+one-shot 500 on the target change's `/points`, the retry drew the map at the same centre, same zoom and
+the same pin offsets as the first view.
+
+PASS 2. After that retry the working map shows no 「地図を読み込めません」 notice (none in 20 samples
+over 12 s), the canvas and 「© OpenStreetMap contributors」 are drawn, and 18 vector tiles answered 200
+with none failed.
+
+PASS 3. Zoomed view (zoom `6.951514216302286`, centre `[139.2483566336723, 36.64074130701438]`) with an
+open 11-item pin list: changing to `Trips photos` closed the list (11 → 0 items) and kept the centre,
+zoom and the pin's offset `(+91.36, +209.39)`. A fresh page with `Videos only` saved (no map, no saved
+view) then `Trips photos` fitted the three pins into view with pin offsets identical to a fresh first
+draw under `Trips photos` (whose stored centre is `[138.24721944444445, 38.47136064500543]`, zoom
+`5.38684785113903`).
+
+Failures: none.
 
 ## Second run
 
