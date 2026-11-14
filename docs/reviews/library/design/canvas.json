@@ -1,0 +1,22 @@
+{
+ "v": 3,
+ "createdOnFiles": {
+  "v": 1,
+  "at": "2026-11-14T12:00:00Z"
+ },
+ "title": "Photo Diary ライブラリ",
+ "launch": {
+  "view": "canvas"
+ },
+ "pages": [],
+ "boards": {
+  "Main.dc.html": {"x": 0, "y": 0, "w": 1280, "h": 900, "title": "広い画面・ライブラリ（撮影月）"},
+  "Tags.dc.html": {"x": 1360, "y": 0, "w": 1280, "h": 900, "title": "広い画面・ライブラリ（タグ）＋分類メニュー"},
+  "Shelf.dc.html": {"x": 2720, "y": 0, "w": 1280, "h": 900, "title": "広い画面・棚のページ"},
+  "Phone.dc.html": {"x": 0, "y": 1020, "w": 375, "h": 812, "title": "375px・ライブラリ"},
+  "Phone-Shelf.dc.html": {"x": 455, "y": 1020, "w": 375, "h": 812, "title": "375px・棚のページ"}
+ },
+ "order": ["Main.dc.html", "Tags.dc.html", "Shelf.dc.html", "Phone.dc.html", "Phone-Shelf.dc.html"],
+ "notes": {},
+ "designSystems": []
+}
