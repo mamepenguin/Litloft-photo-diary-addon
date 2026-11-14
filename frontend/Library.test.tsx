@@ -7,7 +7,16 @@
  * nothing out here; the first-line layout is measured in the browser suite.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { act, configure, fireEvent, getConfig, render, screen, waitFor } from "@testing-library/react";
+import {
+  act,
+  configure,
+  fireEvent,
+  getConfig,
+  render,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react";
 import { NextIntlClientProvider } from "next-intl";
 import coreJa from "@/messages-core/ja.json";
 import coreEn from "@/messages-core/en.json";
@@ -229,7 +238,11 @@ function route(r: Req): Response {
     const all = r.query.get("undated") ? ids("u", 4) : ids(`d${r.query.get("date")}-`, r.query.get("date") === "2026-10-03" ? 5 : 2);
     return json({ file_ids: all, total: all.length });
   }
-  if (r.path === `${BASE}/points`) return json({ points: [] });
+  if (r.path === `${BASE}/points`) {
+    return json({
+      points: [{ file_id: "m2026-10-0", lat: 35, lon: 139, taken_at: "2026-10-01T10:00:00" }],
+    });
+  }
   if (r.path === `${BASE}/note`) return json({ state: "none", file_id: null });
   if (r.path === `${BASE}/map-config`) return json({ tile_url: "https://t.example.test/{z}/{x}/{y}.png", attribution: "" });
   if (r.path.startsWith(BASE)) {
@@ -409,6 +422,15 @@ const gridIds = () =>
   Array.from(document.querySelectorAll("[data-testid=file-grid]")).map((g) =>
     Array.from(g.querySelectorAll("[data-testid=file]")).map((e) => e.getAttribute("data-id")!),
   );
+const visibleGrids = () =>
+  Array.from(document.querySelectorAll<HTMLElement>("[data-testid=file-grid]")).filter(
+    (grid) => grid.closest("[hidden]") === null,
+  );
+async function refreshShownGrid() {
+  const grid = visibleGrids()[0];
+  if (!grid) throw new Error("no grid is shown");
+  await click(within(grid).getByText("mock-refresh"));
+}
 const day = (label: string) => screen.findByRole("button", { name: label });
 
 async function loadMore() {
@@ -1059,6 +1081,89 @@ describe("SPEC-PD-019 I13: after a write through the context menu", () => {
     expect(seeAll()).toHaveLength(12);
     const error = screen.getByText("読み込めませんでした");
     expect(error.compareDocumentPosition(seeAll()[0]) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+});
+
+// ---------------------------------------------------------------- item 5: a write on another face
+
+describe("SPEC-PD-019 item 5: a write on the calendar or the map", () => {
+  async function openDayList() {
+    await click(tab("カレンダー"));
+    await click(await day("10月3日 5枚"));
+    await waitFor(() => expect(visibleGrids()).toHaveLength(1));
+    await waitFor(() =>
+      expect(within(visibleGrids()[0]).queryAllByTestId("file")).toHaveLength(5),
+    );
+  }
+
+  async function openMapList() {
+    await click(tab("地図"));
+    await waitFor(() => expect(mapModule.createPhotoMap).toHaveBeenCalled());
+    const options = vi.mocked(mapModule.createPhotoMap).mock.calls.at(-1)![1] as any;
+    await act(async () => void options.onPointClick(["m2026-10-0"]));
+    await waitFor(() => expect(visibleGrids()).toHaveLength(1));
+    await waitFor(() =>
+      expect(within(visibleGrids()[0]).queryAllByTestId("file")).toHaveLength(1),
+    );
+  }
+
+  async function leaveWithTwoPages() {
+    await settled("?view=library");
+    await shelvesDrawn(12);
+    await loadMore();
+    await shelvesDrawn(15);
+  }
+
+  it.each([
+    ["the calendar's day list", openDayList],
+    ["the map's list", openMapList],
+  ])(
+    "SPEC-PD-019 I13 a write on %s makes the Library read its loaded pages again on return, keeping depth and scroll",
+    async (_face, openList) => {
+      await leaveWithTwoPages();
+      Object.defineProperty(window, "scrollY", { configurable: true, get: () => 900 });
+      await openList();
+      data.month[0] = { ...data.month[0], ids: data.month[0].ids.slice(1) };
+      total = 112;
+      h.scroll.calls.length = 0;
+      const reads = shelfReads().length;
+      await refreshShownGrid();
+      await click(tab("ライブラリ"));
+      await waitFor(() => expect(gridIds()[0][0]).toBe("m2026-10-1"));
+      const again = shelfReads().slice(reads).map((r) => r.query.get("offset"));
+      expect(new Set(again)).toEqual(new Set(["0", "12"]));
+      expect(seeAll()).toHaveLength(15);
+      await waitFor(() => expect(headerText()).toContain("family · 112枚"));
+      expect(h.scroll.calls).toEqual([]);
+      expect(window.scrollY).toBe(900);
+    },
+  );
+
+  it("SPEC-PD-019 I14 Library → Calendar → Library sends no request when nothing was written", async () => {
+    await settled("?view=library");
+    await shelvesDrawn(12);
+    const reads = shelfReads().length;
+    await openDayList();
+    await click(tab("ライブラリ"));
+    await flush();
+    expect(seeAll()).toHaveLength(12);
+    expect(shelfReads()).toHaveLength(reads);
+  });
+
+  it("SPEC-PD-019 a failed re-read after a write on the calendar keeps the shelves and shows the retry", async () => {
+    await settled("?view=library");
+    await shelvesDrawn(12);
+    await openDayList();
+    await refreshShownGrid();
+    answer(isShelves, () => json({ detail: "boom" }, 500));
+    await click(tab("ライブラリ"));
+    await flush();
+    expect(seeAll()).toHaveLength(12);
+    await screen.findByText("読み込めませんでした");
+    expect(seeAll()).toHaveLength(12);
+    await click(screen.getByRole("button", { name: "再試行" }));
+    await waitFor(() => expect(screen.queryByText("読み込めませんでした")).toBeNull());
+    expect(seeAll()).toHaveLength(12);
   });
 });
 

@@ -14,7 +14,7 @@ Photos are placed by the capture date and GPS position the core already stores f
 
 The page opens on the Library, at `?view=library`. The **Group by** menu chooses capture month, tag, collection or folder; **Sort** chooses newest or oldest first. Both are saved in this browser per drive and are in force on the next visit. Changing either redraws the shelves from the top without changing the address.
 
-A shelf shows its photos' first line and a **See all** link. That link opens `/drive/{drive}/addons/photo_diary/shelf?by=…&key=…`, one shelf's photos as the core's justified grid, 40 more as the end of the list nears. Its **Sort** control changes only that page, so the Library keeps its own choice. Going back from a photo returns to the same shelves and place; Back from the shelf page and a reload of either address return to what was left there.
+A shelf shows its photos' first line and a **See all** link. That link opens `/drive/{drive}/addons/photo_diary/shelf?by=…&key=…`, one shelf's photos as the core's justified grid, 40 more as the end of the list nears. Its **Sort** control changes only that page, so the Library keeps its own choice. Going back from a photo returns to the same shelves and place; Back from the shelf page and a reload of either address return to what was left there. A photo trashed or moved from the calendar's or the map's list is gone from the Library's shelves when you come back to it.
 
 The calendar and the map stay at the addresses they had; their photos and counts follow the same Target.
 

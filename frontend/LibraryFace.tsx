@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Images } from "lucide-react";
 import { usePathname } from "next/navigation";
 import { useTranslations } from "next-intl";
@@ -36,6 +36,8 @@ export function LibraryFace({
   targetId,
   targetKey,
   ready,
+  active,
+  writeToken,
   by,
   sort,
   onChangeBy,
@@ -51,6 +53,9 @@ export function LibraryFace({
   targetId: string;
   targetKey: number;
   ready: boolean;
+  active: boolean;
+  /** Bumped by the page for a write made through another face's context menu. */
+  writeToken: number;
   by: Classification;
   sort: Sort;
   onChangeBy: (value: Classification) => void;
@@ -70,10 +75,17 @@ export function LibraryFace({
       ? restore
       : null;
 
-  const refresh = () => {
+  const refresh = useCallback(() => {
     setRefreshToken((value) => value + 1);
     onRefreshCount();
-  };
+  }, [onRefreshCount]);
+
+  const seenWrite = useRef(writeToken);
+  useEffect(() => {
+    if (!active || writeToken === seenWrite.current) return;
+    seenWrite.current = writeToken;
+    refresh();
+  }, [active, writeToken, refresh]);
 
   return (
     <div className="space-y-6 px-4 pb-6 pt-4">

@@ -51,6 +51,8 @@ type Props = {
   onNotAvailable: () => void;
   /** The answer's total and the target token its request was made under. */
   onTotal: (total: number, changes: number) => void;
+  /** A write through the context menu on the open list, for the faces that stay mounted. */
+  onWrite: () => void;
   /** The page was opened on `?view=calendar` alone, so the first month drawn fades in. */
   freshStart: boolean;
 };
@@ -69,6 +71,7 @@ export function CalendarView({
   onRestored,
   onNotAvailable,
   onTotal,
+  onWrite,
   freshStart,
 }: Props) {
   const t = useTranslations("photoDiary");
@@ -91,6 +94,10 @@ export function CalendarView({
     setToken((value) => value + 1);
     setListToken((value) => value + 1);
   }, []);
+  const wrote = useCallback(() => {
+    refresh();
+    onWrite();
+  }, [refresh, onWrite]);
   const [calendarToken, setCalendarToken] = useState(0);
   const refreshCalendar = useCallback(() => setCalendarToken((value) => value + 1), []);
 
@@ -436,7 +443,7 @@ export function CalendarView({
               className="min-w-0 group-data-[wide=false]/diary:mt-6"
             >
               {({ files, moreMayFollow }) => (
-                <FileGrid files={files} moreMayFollow={moreMayFollow} onRefresh={refresh} />
+                <FileGrid files={files} moreMayFollow={moreMayFollow} onRefresh={wrote} />
               )}
             </PhotoList>
           )}

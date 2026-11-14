@@ -86,6 +86,11 @@ function Session({ drive }: { drive: string }) {
   sortRef.current = sort;
 
   const [notAvailable, setNotAvailable] = useState(false);
+  // A write through any face's context menu. The Library stays mounted while
+  // it is hidden, so a counter is the only thing that tells it a write happened
+  // on another face.
+  const [writes, setWrites] = useState(0);
+  const noteWrite = useCallback(() => setWrites((value) => value + 1), []);
   const [count, setCount] = useState<{ changes: number; value: number | null }>({
     changes: -1,
     value: null,
@@ -436,6 +441,8 @@ function Session({ drive }: { drive: string }) {
             targetId={target.selectedId}
             targetKey={target.changes}
             ready={target.ready}
+            active={url.view === "library"}
+            writeToken={writes}
             by={by}
             sort={sort}
             onChangeBy={changeBy}
@@ -465,6 +472,7 @@ function Session({ drive }: { drive: string }) {
             onRestored={calendarRestored}
             onNotAvailable={onNotAvailable}
             onTotal={reportTotal}
+            onWrite={noteWrite}
             freshStart={calendarFade.current && target.changes === 0}
           />
         </div>
@@ -486,6 +494,7 @@ function Session({ drive }: { drive: string }) {
             onRestored={mapRestored}
             onNotAvailable={onNotAvailable}
             onRefresh={countChanged}
+            onWrite={noteWrite}
           />
         </div>
       )}

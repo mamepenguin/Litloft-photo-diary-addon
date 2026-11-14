@@ -43,6 +43,8 @@ type Props = {
   onNotAvailable: () => void;
   /** The list wrote through the core, and what the page shows about the drive may have changed. */
   onRefresh: () => void;
+  /** A write through the context menu on the open list, for the faces that stay mounted. */
+  onWrite: () => void;
 };
 
 const PANEL_CLASS =
@@ -75,6 +77,7 @@ export function MapView({
   onRestored,
   onNotAvailable,
   onRefresh,
+  onWrite,
 }: Props) {
   const t = useTranslations("photoDiary");
   const { ref, wide } = useWide<HTMLDivElement>();
@@ -126,8 +129,8 @@ export function MapView({
     handle.current = null;
   }, []);
 
-  const handlers = useRef({ applyOpenIds, onView, onRefresh });
-  handlers.current = { applyOpenIds, onView, onRefresh };
+  const handlers = useRef({ applyOpenIds, onView, onRefresh, onWrite });
+  handlers.current = { applyOpenIds, onView, onRefresh, onWrite };
 
   // The map is kept across a target change, so its centre and zoom survive
   // while every pin of the previous target goes at once.
@@ -301,6 +304,10 @@ export function MapView({
     setToken((value) => value + 1);
     handlers.current.onRefresh();
   }, []);
+  const write = useCallback(() => {
+    refresh();
+    handlers.current.onWrite();
+  }, [refresh]);
   const retryLoad = useCallback(() => {
     setPhase("loading");
     setToken((value) => value + 1);
@@ -390,7 +397,7 @@ export function MapView({
                   sections={sections}
                   files={files}
                   moreMayFollow={moreMayFollow}
-                  onRefresh={refresh}
+                  onRefresh={write}
                 />
               )}
             </PhotoList>
