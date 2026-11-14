@@ -13,8 +13,10 @@ function RadioMenu<T extends string>({
   options,
   onChange,
   align,
+  caption,
 }: {
   label: string;
+  caption?: string;
   value: T;
   options: readonly Option<T>[];
   onChange: (value: T) => void;
@@ -28,6 +30,11 @@ function RadioMenu<T extends string>({
         align === "end" ? "right-0" : "left-0"
       }`}
     >
+      {caption && (
+        <div aria-hidden="true" className="px-3 py-1.5 text-xs text-text-muted">
+          {caption}
+        </div>
+      )}
       {options.map((option) => {
         const selected = option.value === value;
         return (
@@ -136,6 +143,7 @@ export function ClassificationMenu({
       {open && (
         <RadioMenu
           label={t("classification")}
+          caption={t("classification")}
           value={value}
           align="start"
           options={CLASSIFICATIONS.map((classification) => ({
