@@ -373,7 +373,14 @@ beforeEach(() => {
   vi.mocked(mapModule.createPhotoMap).mockReset();
   vi.mocked(mapModule.createPhotoMap).mockImplementation((async (_el: HTMLElement, options: any) => {
     h.mapOptions.current = options;
-    return { setPoints: vi.fn(), setSelected: vi.fn(), resume: vi.fn(), pause: vi.fn(), destroy: vi.fn() };
+    return {
+      setPoints: vi.fn(),
+      setSelected: vi.fn(),
+      getView: vi.fn(() => ({ center: [0, 0] as [number, number], zoom: 1 })),
+      resume: vi.fn(),
+      pause: vi.fn(),
+      destroy: vi.fn(),
+    };
   }) as any);
 
   const origPush = window.history.pushState.bind(window.history);

@@ -184,7 +184,14 @@ const mapOptions: { current: any } = { current: null };
 function mockMap() {
   vi.mocked(mapModule.createPhotoMap).mockImplementation((async (_el: HTMLElement, options: any) => {
     mapOptions.current = options;
-    const handle = { setPoints: vi.fn(), setSelected: vi.fn(), resume: vi.fn(), pause: vi.fn(), destroy: vi.fn() };
+    const handle = {
+      setPoints: vi.fn(),
+      setSelected: vi.fn(),
+      getView: vi.fn(() => ({ center: [0, 0] as [number, number], zoom: 1 })),
+      resume: vi.fn(),
+      pause: vi.fn(),
+      destroy: vi.fn(),
+    };
     mapHandles.push(handle);
     return handle;
   }) as any);

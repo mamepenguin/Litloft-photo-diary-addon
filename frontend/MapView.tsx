@@ -117,6 +117,15 @@ export function MapView({
     [onPointIds],
   );
 
+  // A map fitted but never moved has its view only inside the map: `viewRef`
+  // is filled by moveend.
+  const dropMap = useCallback(() => {
+    if (!handle.current) return;
+    viewRef.current = handle.current.getView();
+    handle.current.destroy();
+    handle.current = null;
+  }, []);
+
   const handlers = useRef({ applyOpenIds, onView, onRefresh });
   handlers.current = { applyOpenIds, onView, onRefresh };
 
@@ -177,8 +186,7 @@ export function MapView({
         }
 
         if (loaded.points.length === 0) {
-          handle.current?.destroy();
-          handle.current = null;
+          dropMap();
           setTileFailing(false);
           setPhase("empty");
         } else if (handle.current) {
@@ -198,15 +206,15 @@ export function MapView({
         else {
           // The failed phase unmounts the stage, so a handle kept here would
           // draw into a detached node once the retry succeeds.
-          handle.current?.destroy();
-          handle.current = null;
+          dropMap();
+          setTileFailing(false);
           setPhase("failed");
         }
       },
     );
     // `restore` is the page's first-mount state and does not change.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [drive, active, ready, targetKey, token, onNotAvailable]);
+  }, [drive, active, ready, targetKey, token, onNotAvailable, dropMap]);
 
   // A map made while its view is hidden is fitted against a container of no
   // size, so it is made once the view is on screen.
