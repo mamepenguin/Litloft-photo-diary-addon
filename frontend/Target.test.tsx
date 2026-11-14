@@ -144,7 +144,9 @@ const fullParams = (() => {
   const t = resolveAppTarget(FULL, ["image"]);
   if (!t.usable || !("params" in t) || t.params === null) throw new Error("FULL must resolve usable");
   const { type: _type, ...rest } = t.params as Record<string, unknown>;
-  return rest;
+  return Object.fromEntries(
+    Object.entries(rest).filter(([, v]) => v !== undefined && v !== null && v !== false && v !== "" && !(Array.isArray(v) && v.length === 0)),
+  );
 })();
 
 // ---------------------------------------------------------------- the server
@@ -426,6 +428,7 @@ async function choose(from: string, to: RegExp | string) {
 }
 
 const saved = (drive = "family") => readAppTarget(drive, APP);
+const lastPins = () => h.handles.flatMap((handle) => handle.setPoints.mock.calls).at(-1);
 
 // ---------------------------------------------------------------- header (017)
 
@@ -474,7 +477,7 @@ describe("SPEC-PD-016 I6: the default target", () => {
 });
 
 describe("SPEC-PD-016 I7: the look-up of a saved target", () => {
-  it.each(["", "?view=map"])(
+  it.each(["?month=2026-08&date=2026-08-15", "?view=map"])(
     "SPEC-PD-016 sends no photo request while a saved folder is being looked up (%s)",
     async (search) => {
       writeAppTarget("family", APP, TRIP.id);
@@ -482,6 +485,9 @@ describe("SPEC-PD-016 I7: the look-up of a saved target", () => {
       await settled(search);
       await targetButton("…");
       expect(photoReads()).toEqual([]);
+      if (search.includes("date=")) {
+        await waitFor(() => expect(requests.some((r) => r.path === `${BASE}/note`)).toBe(true));
+      }
       await release();
       await targetButton("Trip");
       await waitFor(() => expect(photoReads().length).toBeGreaterThan(0));
@@ -696,12 +702,8 @@ describe("SPEC-PD-016 item 8: a target change", () => {
     await act(async () => void h.mapOptions.current!.onPointClick(["a0"]));
     await waitFor(() => expect(renderedIds()).toEqual(["a0"]));
     await choose("すべての写真", "Trip");
-    await waitFor(() => {
-      const calls = h.handles.flatMap((handle) => handle.setPoints.mock.calls);
-      expect(JSON.stringify(calls.at(-1))).toContain("t0");
-    });
-    const last = JSON.stringify(h.handles.flatMap((handle) => handle.setPoints.mock.calls).at(-1));
-    expect(last).not.toContain("a0");
+    await waitFor(() => expect(JSON.stringify(lastPins())).toContain("t0"));
+    expect(JSON.stringify(lastPins())).not.toContain("a0");
     expect(renderedIds()).toEqual([]);
     expect(screen.queryByRole("button", { name: "閉じる" })).toBeNull();
   });
@@ -819,5 +821,134 @@ describe("SPEC-PD-016 I9: state saved under another target", () => {
     await flush();
     expect(renderedIds()).toEqual([]);
     expect(screen.queryByRole("button", { name: "閉じる" })).toBeNull();
+  });
+});
+
+// ---------------------------------------------------------------- late answers, hidden views, previews, fade
+
+describe("SPEC-PD-016 I14: an answer to a request made under the previous target", () => {
+  const isPath = (path: string) => (r: Req) => under("default")(r) && r.path === `${BASE}${path}`;
+  const cases = [
+    { name: "months", search: "?month=2026-10", match: isPath("/calendar/months") },
+    { name: "days", search: "?month=2026-10", match: isPath("/calendar/days") },
+    { name: "points", search: "?view=map", match: isPath("/points") },
+    { name: "the map's count read", search: "?view=map", match: isPath("/calendar/months") },
+  ];
+
+  it.each(cases)("SPEC-PD-016 $name: a late answer is dropped", async ({ search, match }) => {
+    const release = hold(match);
+    await settled(search);
+    await choose("すべての写真", "Trip");
+    await release();
+    await flush();
+    await waitFor(() => expect(headerText()).toContain("family · 2枚"));
+    expect(headerText()).not.toContain("113枚");
+    expect(screen.queryByRole("button", { name: "10月3日 5枚" })).toBeNull();
+    if (search.includes("map")) await waitFor(() => expect(JSON.stringify(lastPins())).toContain("t0"));
+    expect(JSON.stringify(lastPins() ?? [])).not.toContain("a0");
+  });
+});
+
+describe("SPEC-PD-016 I1: a target change made while the other view was hidden", () => {
+  it("SPEC-PD-016 a change on the calendar applies to the map when it is shown", async () => {
+    await settled("?month=2026-10");
+    await day("10月3日 5枚");
+    await choose("すべての写真", "Trip");
+    await day("9月2日 2枚");
+    const from = requests.length;
+    await click(tab("地図"));
+    await waitFor(() => expect(mapModule.createPhotoMap).toHaveBeenCalled());
+    await waitFor(() => expect(JSON.stringify(lastPins())).toContain("t0"));
+    expect(JSON.stringify(h.handles.flatMap((x) => x.setPoints.mock.calls))).not.toContain("a0");
+    for (const r of requests.slice(from).filter(isPhoto)) expect(libraryKey(r)).toBe("trip");
+  });
+
+  it("SPEC-PD-016 a change on the map applies to the calendar when it is shown", async () => {
+    await settled("?view=map");
+    await waitFor(() => expect(h.mapOptions.current).not.toBeNull());
+    await choose("すべての写真", "Trip");
+    await click(tab("カレンダー"));
+    await day("9月2日 2枚");
+    expect(screen.queryByRole("button", { name: "10月3日 5枚" })).toBeNull();
+  });
+});
+
+describe("SPEC-PD-016 item 8: held previews", () => {
+  function setHover(canHover: boolean) {
+    vi.stubGlobal("matchMedia", (query: string) => ({
+      matches: /hover:\s*hover/.test(query) ? canHover : false,
+      media: query,
+      addEventListener: () => {},
+      removeEventListener: () => {},
+      addListener: () => {},
+      removeListener: () => {},
+      onchange: null,
+      dispatchEvent: () => false,
+    }));
+  }
+  const enter = (el: HTMLElement) =>
+    act(async () => {
+      fireEvent.pointerEnter(el);
+      fireEvent.pointerOver(el);
+      fireEvent.mouseEnter(el);
+      fireEvent.mouseOver(el);
+    });
+  const thumbSources = () =>
+    Array.from(document.body.querySelectorAll("img"))
+      .map((i) => i.getAttribute("src") ?? "")
+      .filter((src) => /\/api\/files\/[^/]+\/thumbnail/.test(src));
+
+  it("SPEC-PD-016 a preview held under the previous target is dropped", async () => {
+    setHover(true);
+    await settled("?month=2026-10");
+    await enter(await day("10月3日 5枚"));
+    await waitFor(() => expect(thumbSources().some((src) => src.includes("d3-"))).toBe(true));
+    await choose("すべての写真", "Trip");
+    await targetButton("Trip");
+    expect(thumbSources().filter((src) => src.includes("d3-"))).toEqual([]);
+  });
+
+  it("SPEC-PD-016 I14 a preview answer that arrives after the change is dropped", async () => {
+    setHover(true);
+    const release = hold((r) => under("default")(r) && r.path === `${BASE}/photos` && r.query.get("limit") === "1");
+    await settled("?month=2026-10");
+    await enter(await day("10月3日 5枚"));
+    await waitFor(() => expect(requests.some((r) => r.path === `${BASE}/photos` && r.query.get("limit") === "1")).toBe(true));
+    await choose("すべての写真", "Trip");
+    await release();
+    await flush();
+    await targetButton("Trip");
+    expect(thumbSources().filter((src) => src.includes("d3-"))).toEqual([]);
+  });
+});
+
+describe("SPEC-PD-008 I3 (revised): a target change draws the calendar at once", () => {
+  let animate: ReturnType<typeof vi.fn>;
+  beforeEach(() => {
+    animate = vi.fn(() => ({ cancel: vi.fn() }));
+    (Element.prototype as any).animate = animate;
+  });
+  afterEach(() => {
+    delete (Element.prototype as any).animate;
+  });
+
+  it("SPEC-PD-016 no fade when the month in the URL stays", async () => {
+    await settled("?month=2026-10");
+    await day("10月3日 5枚");
+    await choose("すべての写真", "Full");
+    await day("10月20日 100枚");
+    await flush();
+    expect(animate).not.toHaveBeenCalled();
+  });
+
+  it("SPEC-PD-016 no fade when the calendar moves to the new target's newest month", async () => {
+    await settled("");
+    await day("10月3日 5枚");
+    expect(animate).toHaveBeenCalled();
+    animate.mockClear();
+    await choose("すべての写真", "Trip");
+    await day("9月2日 2枚");
+    await flush();
+    expect(animate).not.toHaveBeenCalled();
   });
 });
