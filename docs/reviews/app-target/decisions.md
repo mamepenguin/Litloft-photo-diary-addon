@@ -522,3 +522,7 @@ pending: |
 ## Human decisions
 
 - 2026-11-14, on code-r1 F5 (the fake React element that drew an unusable folder's reason): the human chose "1", draw the reason the way the core's apps do, in the disabled row's `title`, and change the acceptance assertion in `frontend/Target.test.tsx` (I7 menu test) from visible text to that attribute.
+
+## Design differences
+
+Accepted by the human on 2026-11-14, by id, from design-check.md (at 0345d14): D-1, D-2, D-3, D-4, D-5, D-6, D-7, D-8, D-9, D-10, D-11, D-12, D-13, D-14, D-15, D-16, D-17, D-18, D-19, D-20, D-21, D-22 ("ok" to accepting all 22). D-15 (at 375px the map's zoom group covers the northernmost pin's count badge) and D-17 (the core Target menu's 200px popover wraps a long folder name) predate this change and are left for separate work.
