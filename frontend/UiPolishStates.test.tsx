@@ -669,8 +669,11 @@ describe("SPEC-PD-017 I10: the view switch's place", () => {
       widthOf(px);
       await renderAt("?month=2026-10");
       const header = document.querySelector("header") as HTMLElement;
-      const titleRow = header.querySelector("h1")!.closest("[class*='row-start-1']") as HTMLElement;
-      expect(titleRow.contains(screen.getByRole("tablist")), `${px}px`).toBe(false);
+      const tablist = screen.getByRole("tablist");
+      const titleRowCells = Array.from(header.querySelectorAll<HTMLElement>("[class*='row-start-1']"));
+      expect(titleRowCells.some((cell) => cell.querySelector("h1") || cell.matches("h1")), `${px}px`).toBe(true);
+      expect(titleRowCells.some((cell) => cell.contains(tablist)), `${px}px`).toBe(false);
+      expect(tablist.closest("[class*='row-start-3']"), `${px}px`).not.toBeNull();
       expect(header.contains(screen.getByRole("tablist")), `${px}px`).toBe(true);
       cleanup();
     }
