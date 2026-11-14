@@ -168,7 +168,7 @@ test.describe("a URL with no query reached while the page stays mounted", () => 
       window.history.pushState(null, "", window.location.pathname);
       window.dispatchEvent(new PopStateEvent("popstate"));
     });
-    await expect(page.getByRole("tab", { name: "Calendar" })).toHaveAttribute("aria-selected", "true");
+    await expect(page.getByRole("tab", { name: "Library" })).toHaveAttribute("aria-selected", "true");
     expect(await page.evaluate(() => Object.keys(sessionStorage).filter((k) => k.startsWith("photo_diary:state:")))).toEqual([]);
 
     await page.getByRole("tab", { name: "Map" }).click();

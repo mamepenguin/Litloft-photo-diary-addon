@@ -439,7 +439,7 @@ async function flush() {
 
 const sleep = (ms: number) => act(async () => void (await new Promise((r) => setTimeout(r, ms))));
 
-async function open(search = "", locale: "ja" | "en" = "ja") {
+async function open(search = "?view=calendar", locale: "ja" | "en" = "ja") {
   window.history.replaceState(null, "", `/drive/${h.drive.current}/addons/photo_diary${search}`);
   const view = mount(locale);
   await flush();
@@ -934,7 +934,7 @@ describe("SPEC-PD-007 I8: the Today control", () => {
   });
 
   it("en: is named Today", async () => {
-    await open("", "en");
+    await open("?view=calendar", "en");
     await waitFor(() => expect(control("Today")).not.toBeNull());
   });
 });
@@ -1587,7 +1587,7 @@ describe("SPEC-PD-006 I10: a day or drive the viewer has left", () => {
     const page = await open(OCT3);
     await waitFor(() => expect(noteReads("2026-10-03")).toBe(1));
     h.drive.current = "work";
-    window.history.replaceState(null, "", "/drive/work/addons/photo_diary");
+    window.history.replaceState(null, "", "/drive/work/addons/photo_diary?view=calendar");
     page.again();
     await screen.findByText("撮影日のある写真はありません");
     await release();
@@ -2083,7 +2083,7 @@ describe("SPEC-PD-006 I10: a write or a restore answered after the viewer has go
     await click(writeControl()!);
     await waitFor(() => expect(creates()).toHaveLength(1));
     h.drive.current = "work";
-    window.history.replaceState(null, "", "/drive/work/addons/photo_diary");
+    window.history.replaceState(null, "", "/drive/work/addons/photo_diary?view=calendar");
     page.again();
     await screen.findByText("撮影日のある写真はありません");
     const before = here();

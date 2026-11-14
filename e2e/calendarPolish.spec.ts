@@ -190,9 +190,9 @@ test.describe("SPEC-PD-008: a day's surface deepens with its photo count", () =>
 });
 
 test.describe("SPEC-PD-008 I3: the fade", () => {
-  test("a page opened with no query fades its first month, and the browser really runs it", async ({ page }) => {
+  test("a page opened on ?view=calendar alone fades its first month, and the browser really runs it", async ({ page }) => {
     await recordFades(page);
-    await open(page, "");
+    await open(page, "?view=calendar");
     await expect(day(page, 30)).toBeVisible();
     const calls = await fades(page);
     const dates = SEPTEMBER.filter((d) => d.count > 0).map((d) => d.date);
@@ -209,7 +209,7 @@ test.describe("SPEC-PD-008 I3: the fade", () => {
   });
 
   test("the last day is clear while its turn is awaited, then reaches its surface", async ({ page }) => {
-    await open(page, "");
+    await open(page, "?view=calendar");
     await expect(day(page, 30)).toBeVisible();
     // Day 30 (count 1, step 1) waits 406 ms.
     const during = await alpha(day(page, 30));
@@ -271,7 +271,7 @@ test.describe("SPEC-PD-008 I3: the fade", () => {
   test("under reduced motion nothing fades", async ({ page }) => {
     await page.emulateMedia({ reducedMotion: "reduce" });
     await recordFades(page);
-    await open(page, "");
+    await open(page, "?view=calendar");
     await expect(day(page, 30)).toBeVisible();
     await page.getByRole("button", { name: "Previous month" }).click();
     await expect(page.getByRole("heading", { name: /August 2026/ })).toBeVisible();
@@ -281,7 +281,7 @@ test.describe("SPEC-PD-008 I3: the fade", () => {
   });
 
   test("a hover applies at once, though the day's fade has not started", async ({ page }) => {
-    await open(page, "");
+    await open(page, "?view=calendar");
     await expect(day(page, 30)).toBeVisible();
     await day(page, 30).hover();
     expect(await alpha(day(page, 30))).toBeCloseTo(0.15, 2);
@@ -289,7 +289,7 @@ test.describe("SPEC-PD-008 I3: the fade", () => {
 
   test("a note-only day does not fade", async ({ page }) => {
     await recordFades(page);
-    await open(page, "");
+    await open(page, "?view=calendar");
     await expect(day(page, 9)).toBeVisible();
     expect((await fades(page)).map((c) => c.date)).not.toContain("2026-09-09");
   });

@@ -255,9 +255,9 @@ describe("SPEC-PD-008 I3: when the surfaces fade", () => {
   });
   const calls = () => animate.mock.calls.map(([keyframes, options]: any[]) => ({ keyframes, ...options }));
 
-  it("runs when the page opened with no query draws its first month, in grid order 14 ms apart for 450 ms", async () => {
+  it("runs when a page opened on ?view=calendar alone draws its first month, in grid order 14 ms apart for 450 ms", async () => {
     window.history.replaceState(null, "", "/drive/family/addons/photo_diary");
-    await renderAt("");
+    await renderAt("?view=calendar");
     const run = calls();
     // Days with photos only: 1 to 8 here, 31 has none (count 0 on the 9th).
     expect(run).toHaveLength(8);
@@ -311,14 +311,14 @@ describe("SPEC-PD-008 I3: when the surfaces fade", () => {
       addEventListener: () => {},
       removeEventListener: () => {},
     }));
-    await renderAt("");
+    await renderAt("?view=calendar");
     expect(animate).not.toHaveBeenCalled();
   });
 
   it("waits for the days: while they load nothing runs, and the surfaces fade once they are there", async () => {
     const slow = deferred<any>();
     vi.mocked(api.fetchDays).mockReturnValueOnce(slow.promise);
-    await renderAt("");
+    await renderAt("?view=calendar");
     expect(animate).not.toHaveBeenCalled();
     await act(async () => {
       slow.resolve({ days: Object.entries(COUNTS).map(([d, count]) => ({ date: dateOf(Number(d)), count })) });
@@ -329,7 +329,7 @@ describe("SPEC-PD-008 I3: when the surfaces fade", () => {
 
   it("does not run for a month whose days failed to load, and draws on the retry's grid", async () => {
     vi.mocked(api.fetchDays).mockRejectedValueOnce(new (api as any).ApiError(500));
-    await renderAt("");
+    await renderAt("?view=calendar");
     expect(animate).not.toHaveBeenCalled();
     await act(async () => void fireEvent.click(screen.getByRole("button", { name: "再試行" })));
     await flush();

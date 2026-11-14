@@ -262,6 +262,8 @@ function route(r: Req): Response {
     return json({ file_ids: all.slice(offset, offset + limit), total: all.length });
   }
   if (r.path === `${BASE}/note`) return json({ state: "none", file_id: null });
+  if (r.path === `${BASE}/library/shelves`) return json({ shelves: [], total_shelves: 0 });
+  if (r.path === `${BASE}/library/shelf`) return json({ file_ids: [], total: 0, label: "" });
   if (r.path === `${BASE}/map-config`) return json({ tile_url: "https://t.example.test/{z}/{x}/{y}.png", attribution: "" });
   if (r.path.startsWith(BASE)) {
     unexpected.push(r.path);
@@ -419,7 +421,7 @@ async function flush() {
   });
 }
 
-async function settled(search = "") {
+async function settled(search = "?view=calendar") {
   window.history.replaceState(null, "", `/drive/${h.drive.current}/addons/photo_diary${search}`);
   const view = render(
     <NextIntlClientProvider locale="ja" messages={{ ...coreJa, ...ja }}>
@@ -859,6 +861,7 @@ describe("SPEC-PD-016 item 8: a target change", () => {
     const before = requests.length;
     await act(async () => void window.history.pushState(null, "", "/drive/family/addons/photo_diary"));
     await flush();
+    await click(tab("カレンダー"));
     await targetButton("Trip");
     await day("9月2日 2枚");
     expect(folderReads()).toBe(reads);
@@ -1121,7 +1124,7 @@ describe("SPEC-PD-008 I3 (revised): a target change draws the calendar at once",
   });
 
   it("SPEC-PD-016 no fade when the calendar moves to the new target's newest month", async () => {
-    await settled("");
+    await settled("?view=calendar");
     await day("10月3日 5枚");
     expect(animate).toHaveBeenCalled();
     animate.mockClear();
