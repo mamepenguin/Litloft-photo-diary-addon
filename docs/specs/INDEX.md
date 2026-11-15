@@ -10,3 +10,5 @@
 | SPEC-PD-018 | approved | docs/specs/library.md | sha256:91a93dc7fa4ad1b3c1bc8d1a574ac03ebb146b658934a086e33febd9bc8bc18b |
 | SPEC-PD-019 | approved | docs/specs/library.md | sha256:91a93dc7fa4ad1b3c1bc8d1a574ac03ebb146b658934a086e33febd9bc8bc18b |
 | SPEC-PD-020 | approved | docs/specs/library.md | sha256:91a93dc7fa4ad1b3c1bc8d1a574ac03ebb146b658934a086e33febd9bc8bc18b |
+| SPEC-PD-021 | draft | docs/specs/target-members.md | |
+| SPEC-PD-022 | draft | docs/specs/target-members.md | |
