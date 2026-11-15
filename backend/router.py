@@ -314,10 +314,7 @@ def _folder_base(counts) -> str:
         children = set()
         for folder in counts:
             if base:
-                prefix = f"{base}/"
-                if not folder.startswith(prefix):
-                    return base
-                children.add(folder[len(prefix):].split("/", 1)[0])
+                children.add(folder[len(base) + 1:].split("/", 1)[0])
             else:
                 children.add(folder.split("/", 1)[0])
         if len(children) != 1:
