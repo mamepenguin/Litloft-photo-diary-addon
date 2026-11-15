@@ -648,7 +648,14 @@ describe("SPEC-PD-021 items 4 to 6: evaluating, then ready", () => {
     expect(photoReads().length).toBe(before);
     await finish(outcome);
     if (outcome.status === "ready") {
-      await day("7月4日 2枚");
+      // The URL's month stays (app-target.md item 8); October is read again under the members.
+      await waitFor(() =>
+        expect(
+          photoReads()
+            .slice(before)
+            .some((r) => r.path === `${BASE}/calendar/days` && r.query.get("month") === "2026-10"),
+        ).toBe(true),
+      );
       expectMemberWire(photoReads().slice(before), MEMBERS);
     } else {
       await screen.findByText("読み込めませんでした");

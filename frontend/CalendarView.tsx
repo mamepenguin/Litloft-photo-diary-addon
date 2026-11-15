@@ -144,29 +144,8 @@ export function CalendarView({
   const monthList = useMemo(() => months?.months ?? [], [months]);
   // The month in the URL is drawn even when the new target has nothing there,
   // so the screen and the address agree; only a URL with no month takes the
-  // target's newest. A member target is evaluated after the change, and a
-  // month that its members do not reach draws the target's newest instead.
-  const urlMonthInTarget = url.month === null || monthList.some((m) => m.month === url.month);
-  const memberMonthFallsBack =
-    fileIds !== null &&
-    targetKey > 0 &&
-    url.date === null &&
-    monthList.length > 0 &&
-    !urlMonthInTarget;
-  const month =
-    months === null
-      ? null
-      : memberMonthFallsBack
-        ? monthList[0].month
-        : (url.month ?? monthList[0]?.month ?? null);
-  const fallbackMonth = memberMonthFallsBack ? monthList[0].month : null;
-
-  // The address follows the month drawn for the new members, so a reload, the
-  // undated control and the next month's link all stay in the target's months.
-  useEffect(() => {
-    if (!active || fallbackMonth === null) return;
-    go("replace", { month: fallbackMonth });
-  }, [active, fallbackMonth, go]);
+  // target's newest.
+  const month = months === null ? null : (url.month ?? monthList[0]?.month ?? null);
 
   useEffect(() => {
     if (!active || !ready) return;
