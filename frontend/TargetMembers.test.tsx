@@ -358,6 +358,8 @@ const isFolders = (r: Req) => r.path === "/api/drives/family/smart-folders";
 const isCollections = (r: Req) => r.path === "/api/drives/family/collections";
 const isPhoto = (r: Req) => PHOTO_PATHS.includes(r.path);
 const photoReads = () => requests.filter(isPhoto);
+const noteReads = (date: string) =>
+  requests.filter((r) => r.path === `${BASE}/note` && r.query.get("date") === date).length;
 
 // ---------------------------------------------------------------- the evaluation
 
@@ -874,8 +876,32 @@ describe("SPEC-PD-021 I4: restore and saved state", () => {
   });
 });
 
-// ---------------------------------------------------------------- collections (022)
+// ---------------------------------------------------------------- the second read (021 item 5, I9)
 
+describe("SPEC-PD-021 I9: the daily notes' second read", () => {
+  it("starts its clock at ready, not at the end of the look-up", async () => {
+    writeAppTarget("family", APP, BEACH.id);
+    await settled("?month=2026-07&date=2026-07-04");
+    await targetButton("Beach");
+    await waitFor(() => expect(evaluate).toHaveBeenCalledTimes(1));
+    await flush();
+    expect(noteReads("2026-07-04")).toBe(1);
+
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 3300));
+    });
+    expect(noteReads("2026-07-04")).toBe(1);
+
+    await finish(READY);
+    await waitFor(() => expect(renderedIds()).toEqual(["m0", "m1"]));
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 3300));
+    });
+    expect(noteReads("2026-07-04")).toBe(2);
+  }, 15000);
+});
+
+// ---------------------------------------------------------------- collections (022)
 describe("SPEC-PD-022: collection targets", () => {
   it("SPEC-PD-022 I6 the menu lists the drive's collections, and choosing one saves collection:<id> and sends collection=<name> on GET", async () => {
     await settled("?view=calendar");

@@ -131,6 +131,8 @@ vi.mock("@/components/FileGrid", async () => {
 vi.mock("@/lib/api", async (orig) => ({
   ...(await orig<typeof import("@/lib/api")>()),
   getDrives: vi.fn(async () => []),
+  getSmartFolders: vi.fn(async () => []),
+  getCollections: vi.fn(async () => []),
   batchGetFiles: vi.fn(),
 }));
 

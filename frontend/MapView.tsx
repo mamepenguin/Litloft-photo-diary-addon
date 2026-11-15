@@ -1,9 +1,10 @@
 "use client";
 
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type MutableRefObject } from "react";
-import { MapPinOff } from "lucide-react";
+import { Images, MapPinOff } from "lucide-react";
 import { useTranslations } from "next-intl";
-import { fetchMapConfig, fetchPoints, type Point, type TargetParams } from "./api";
+import { EmptyState } from "@/components/EmptyState";
+import { fetchMapConfig, fetchPoints, type MemberFileIds, type Point, type TargetParams } from "./api";
 import { isNotFound } from "./lib/errors";
 import { LoadError } from "./LoadError";
 import { CloseControl, PhotoList, type ListPosition } from "./PhotoList";
@@ -33,10 +34,17 @@ type Props = {
   writeToken: number;
   /** The target the photo routes take; `null` is the default target. */
   target: TargetParams | null;
+  /** The evaluated members a member target's requests carry; `null` outside one. */
+  fileIds: MemberFileIds | null;
   targetId: string;
   targetKey: number;
   /** Whether the target has been resolved; no photo request goes out before it has. */
   ready: boolean;
+  /** The member evaluation failed; the map draws its failed phase with no stage. */
+  targetFailed: boolean;
+  /** More members than one request may carry; the map's body cannot use the target. */
+  targetTooLarge: boolean;
+  onRetryTarget: () => void;
   restore: MapRestore;
   positionRef: MutableRefObject<ListPosition | null>;
   onView: (center: LngLat, zoom: number) => void;
@@ -70,9 +78,13 @@ export function MapView({
   active,
   writeToken,
   target,
+  fileIds,
   targetId,
   targetKey,
   ready,
+  targetFailed,
+  targetTooLarge,
+  onRetryTarget,
   restore,
   positionRef,
   onView,
@@ -112,6 +124,8 @@ export function MapView({
   const restoreSeq = useRef<number | null>(null);
   const targetRef = useRef(target);
   targetRef.current = target;
+  const fileIdsRef = useRef(fileIds);
+  fileIdsRef.current = fileIds;
   const seenTarget = useRef(targetKey);
 
   const applyOpenIds = useCallback(
@@ -162,9 +176,20 @@ export function MapView({
     reason.current = "enter";
     if (pointsRef.current === null && !handle.current) setPhase("loading");
 
+    const target = targetRef.current;
+    const fileIds = fileIdsRef.current;
+    const points =
+      fileIds !== null
+        ? target
+          ? fetchPoints(drive, target, fileIds)
+          : fetchPoints(drive, undefined, fileIds)
+        : target
+          ? fetchPoints(drive, target)
+          : fetchPoints(drive);
+
     Promise.all([
       config.current ? Promise.resolve(config.current) : fetchMapConfig(drive),
-      targetRef.current ? fetchPoints(drive, targetRef.current) : fetchPoints(drive),
+      points,
     ]).then(
       ([loadedConfig, loaded]) => {
         if (mine !== request.current) return;
@@ -345,6 +370,22 @@ export function MapView({
     window.addEventListener("resize", measureStage);
     return () => window.removeEventListener("resize", measureStage);
   }, [measureStage]);
+
+  if (targetFailed) {
+    return (
+      <div className="px-4 pb-6">
+        <LoadError onRetry={onRetryTarget} />
+      </div>
+    );
+  }
+
+  if (targetTooLarge) {
+    return (
+      <div className="px-4 pb-6">
+        <EmptyState icon={Images} title={t("targetUnavailable")} />
+      </div>
+    );
+  }
 
   return (
     <div ref={ref} data-wide={wide} className={`group/diary ${showMap ? "" : "px-4 pb-6"}`}>

@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { fetchPhotos, type TargetParams } from "./api";
+import { fetchPhotos, type MemberFileIds, type TargetParams } from "./api";
 
 const REST_MS = 120;
 
@@ -27,6 +27,8 @@ type Options = {
   version: unknown;
   /** The target the day's first photo is read under; `null` is the default target. */
   target: TargetParams | null;
+  /** The evaluated members a member target's request carries; `null` outside one. */
+  fileIds: MemberFileIds | null;
   /** Changes with the target, which drops the held answers and the preview on screen. */
   targetKey: number;
 };
@@ -35,7 +37,7 @@ type Options = {
  * A day's first photo, shown after the pointer rests on the day. A device that
  * cannot hover never reads: the list the day opens holds the same photo.
  */
-export function useDayPreview({ drive, active, month, version, target, targetKey }: Options): DayPreview {
+export function useDayPreview({ drive, active, month, version, target, fileIds, targetKey }: Options): DayPreview {
   const [view, setView] = useState<PreviewView | null>(null);
   const held = useRef(new Map<string, string>());
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -73,7 +75,11 @@ export function useDayPreview({ drive, active, month, version, target, targetKey
           show(id);
           return;
         }
-        fetchPhotos(drive, { ...(target ?? {}), date, limit: 1 }).then(
+        const request =
+          fileIds !== null
+            ? fetchPhotos(drive, { ...(target ?? {}), date, limit: 1 }, fileIds)
+            : fetchPhotos(drive, { ...(target ?? {}), date, limit: 1 });
+        request.then(
           (result) => {
             if (mine !== turn.current) return;
             const first = result.file_ids[0];
@@ -85,7 +91,7 @@ export function useDayPreview({ drive, active, month, version, target, targetKey
         );
       }, REST_MS);
     },
-    [drive, end, target],
+    [drive, end, target, fileIds],
   );
 
   const imageLoaded = useCallback(() => {

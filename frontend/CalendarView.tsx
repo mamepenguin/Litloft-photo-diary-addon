@@ -1,11 +1,12 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState, type MutableRefObject } from "react";
-import { CalendarOff, ChevronLeft, ChevronRight } from "lucide-react";
+import { CalendarOff, ChevronLeft, ChevronRight, Images } from "lucide-react";
 import { useLocale, useTranslations } from "next-intl";
 import { Button } from "@/components/Button";
+import { EmptyState } from "@/components/EmptyState";
 import { FileGrid } from "@/components/FileGrid";
-import { fetchDays, fetchMonths, fetchPhotos, type TargetParams } from "./api";
+import { fetchDays, fetchMonths, fetchPhotos, type MemberFileIds, type TargetParams } from "./api";
 import { isNotFound } from "./lib/errors";
 import { LoadError } from "./LoadError";
 import { MonthGrid, type DayInfo } from "./MonthGrid";
@@ -43,10 +44,17 @@ type Props = {
   go: (mode: "push" | "replace", next: Partial<PageUrl>) => void;
   /** The target the photo routes take; `null` is the default target. */
   target: TargetParams | null;
+  /** The evaluated members a member target's photo requests carry; `null` outside one. */
+  fileIds: MemberFileIds | null;
   targetId: string;
   targetKey: number;
   /** Whether the target has been resolved; no photo request goes out before it has. */
   ready: boolean;
+  /** The member evaluation failed; the calendar draws its first-load failure alone. */
+  targetFailed: boolean;
+  /** More members than one request may carry; the calendar's body cannot use the target. */
+  targetTooLarge: boolean;
+  onRetryTarget: () => void;
   positionRef: MutableRefObject<ListPosition | null>;
   restore: { loaded: number; scrollY: number; target: string } | null;
   onRestored: () => void;
@@ -66,9 +74,13 @@ export function CalendarView({
   url,
   go,
   target,
+  fileIds,
   targetId,
   targetKey,
   ready,
+  targetFailed,
+  targetTooLarge,
+  onRetryTarget,
   positionRef,
   restore,
   onRestored,
@@ -132,13 +144,39 @@ export function CalendarView({
   const monthList = useMemo(() => months?.months ?? [], [months]);
   // The month in the URL is drawn even when the new target has nothing there,
   // so the screen and the address agree; only a URL with no month takes the
-  // target's newest.
-  const month = months === null ? null : (url.month ?? monthList[0]?.month ?? null);
+  // target's newest. A member target is evaluated after the change, and a
+  // month that its members do not reach draws the target's newest instead.
+  const urlMonthInTarget = url.month === null || monthList.some((m) => m.month === url.month);
+  const memberMonthFallsBack =
+    fileIds !== null &&
+    targetKey > 0 &&
+    url.date === null &&
+    monthList.length > 0 &&
+    !urlMonthInTarget;
+  const month =
+    months === null
+      ? null
+      : memberMonthFallsBack
+        ? monthList[0].month
+        : (url.month ?? monthList[0]?.month ?? null);
+  const fallbackMonth = memberMonthFallsBack ? monthList[0].month : null;
+
+  // The address follows the month drawn for the new members, so a reload, the
+  // undated control and the next month's link all stay in the target's months.
+  useEffect(() => {
+    if (!active || fallbackMonth === null) return;
+    go("replace", { month: fallbackMonth });
+  }, [active, fallbackMonth, go]);
 
   useEffect(() => {
     if (!active || !ready) return;
     const mine = ++monthsRequest.current;
-    (target ? fetchMonths(drive, target) : fetchMonths(drive)).then(
+    (fileIds !== null
+      ? fetchMonths(drive, target ?? undefined, fileIds)
+      : target
+        ? fetchMonths(drive, target)
+        : fetchMonths(drive)
+    ).then(
       (result) => {
         if (mine !== monthsRequest.current) return;
         haveMonths.current = true;
@@ -154,12 +192,17 @@ export function CalendarView({
         else setMonthsFailed(true);
       },
     );
-  }, [drive, active, ready, target, targetKey, token, calendarToken, report, onNotAvailable, onTotal]);
+  }, [drive, active, ready, target, fileIds, targetKey, token, calendarToken, report, onNotAvailable, onTotal]);
 
   useEffect(() => {
     if (!active || !ready || month === null || nothingDated) return;
     const mine = ++daysRequest.current;
-    (target ? fetchDays(drive, month, target) : fetchDays(drive, month)).then(
+    (fileIds !== null
+      ? fetchDays(drive, month, target ?? undefined, fileIds)
+      : target
+        ? fetchDays(drive, month, target)
+        : fetchDays(drive, month)
+    ).then(
       (result) => {
         if (mine !== daysRequest.current) return;
         haveDaysFor.current = month;
@@ -177,7 +220,7 @@ export function CalendarView({
         else setDaysFailedFor(month);
       },
     );
-  }, [drive, active, ready, month, nothingDated, target, token, calendarToken, report, onNotAvailable]);
+  }, [drive, active, ready, month, nothingDated, target, fileIds, token, calendarToken, report, onNotAvailable]);
 
   const undatedCount = months?.undated_count ?? 0;
   const listKind: "day" | "undated" | null = url.date
@@ -196,15 +239,24 @@ export function CalendarView({
     async (offset, limit) => {
       // The day's note is read while the target is looked up; its photos are not.
       if (!ready) return new Promise<{ ids: string[]; total: number }>(() => {});
-      const result = await fetchPhotos(
-        drive,
-        listKind === "day"
-          ? { ...(target ?? {}), date: url.date ?? undefined, limit, offset }
-          : { ...(target ?? {}), undated: true, limit, offset },
-      );
+      const result =
+        fileIds !== null
+          ? await fetchPhotos(
+              drive,
+              listKind === "day"
+                ? { ...(target ?? {}), date: url.date ?? undefined, limit, offset }
+                : { ...(target ?? {}), undated: true, limit, offset },
+              fileIds,
+            )
+          : await fetchPhotos(
+              drive,
+              listKind === "day"
+                ? { ...(target ?? {}), date: url.date ?? undefined, limit, offset }
+                : { ...(target ?? {}), undated: true, limit, offset },
+            );
       return { ids: result.file_ids, total: result.total };
     },
-    [drive, ready, listKind, url.date, target],
+    [drive, ready, listKind, url.date, target, fileIds],
   );
 
   const listKey = listKind === "day" ? `day:${url.date}` : "undated";
@@ -235,7 +287,7 @@ export function CalendarView({
     if (restoreFor !== urlListKey || restore.target !== targetId) onRestored();
   }, [ready, restore, restoreFor, urlListKey, targetId, onRestored]);
 
-  const preview = useDayPreview({ drive, active, month, version: days, target, targetKey });
+  const preview = useDayPreview({ drive, active, month, version: days, target, fileIds, targetKey });
 
   const stripEligible = active && !wide && openDate !== null && daysForMonth !== null;
   const marker = useReachedHeader(stripEligible, STRIP_REACH);
@@ -311,6 +363,22 @@ export function CalendarView({
     if (active) go("replace", { month: url.month });
   }, [active, go, url.month]);
   const onListResult = useCallback((ok: boolean) => report("list", ok), [report]);
+
+  if (targetFailed) {
+    return (
+      <div className="px-4 pb-6">
+        <LoadError onRetry={onRetryTarget} />
+      </div>
+    );
+  }
+
+  if (targetTooLarge) {
+    return (
+      <div className="px-4 pb-6">
+        <EmptyState icon={Images} title={t("targetUnavailable")} />
+      </div>
+    );
+  }
 
   return (
     <div ref={ref} data-wide={wide} className="group/diary px-4 pb-6">

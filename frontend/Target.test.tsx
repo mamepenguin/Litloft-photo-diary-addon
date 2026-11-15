@@ -269,6 +269,7 @@ function route(r: Req): Response {
     return json({ detail: "unexpected route" }, 500);
   }
   if (r.path === "/api/drives/family/smart-folders") return json(folders);
+  if (r.path === "/api/drives/family/collections") return json([]);
   if (r.path === "/api/drives/family/files") return json({ data: [], meta: { total: 113, page: 1, limit: 1 } });
   if (r.path === "/api/addons/status") return json({ addons: {}, slots: {} });
   return json({ detail: "Not Found" }, 404);

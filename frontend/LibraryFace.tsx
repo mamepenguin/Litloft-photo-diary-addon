@@ -7,7 +7,7 @@ import { useTranslations } from "next-intl";
 import { RetryButton } from "@/components/appshell/RetryButton";
 import { useNearEnd } from "@/components/appshell/useNearEnd";
 import { EmptyState } from "@/components/EmptyState";
-import type { TargetParams } from "./api";
+import type { MemberFileIds, TargetParams } from "./api";
 import { fetchShelves } from "./api";
 import { ClassificationMenu, SortMenu } from "./LibraryControls";
 import { LoadError } from "./LoadError";
@@ -33,9 +33,13 @@ function SkeletonShelf() {
 export function LibraryFace({
   drive,
   target,
+  fileIds,
   targetId,
   targetKey,
   ready,
+  targetFailed,
+  targetTooLarge,
+  onRetryTarget,
   active,
   writeToken,
   onWrite,
@@ -51,9 +55,15 @@ export function LibraryFace({
 }: {
   drive: string;
   target: TargetParams | null;
+  fileIds: MemberFileIds | null;
   targetId: string;
   targetKey: number;
   ready: boolean;
+  /** The member evaluation failed; the face shows its first-load retry. */
+  targetFailed: boolean;
+  /** More members than one request may carry; the face's body cannot use the target. */
+  targetTooLarge: boolean;
+  onRetryTarget: () => void;
   active: boolean;
   /** Bumped by the page for a write made through another face's context menu. */
   writeToken: number;
@@ -70,6 +80,7 @@ export function LibraryFace({
   onNotAvailable: () => void;
 }) {
   const pathname = usePathname();
+  const t = useTranslations("photoDiary");
   const [refreshToken, setRefreshToken] = useState(0);
   const restored = useRef(restore !== null);
 
@@ -101,10 +112,15 @@ export function LibraryFace({
         <ClassificationMenu value={by} onChange={onChangeBy} />
         <SortMenu value={sort} onChange={onChangeSort} />
       </div>
-      {ready ? (
+      {targetTooLarge ? (
+        <EmptyState icon={Images} title={t("targetUnavailable")} />
+      ) : targetFailed ? (
+        <RetryButton onRetry={onRetryTarget} />
+      ) : ready ? (
         <Shelves
           drive={drive}
           target={target}
+          fileIds={fileIds}
           targetKey={targetKey}
           by={by}
           sort={sort}
@@ -131,6 +147,7 @@ export function LibraryFace({
 function Shelves({
   drive,
   target,
+  fileIds,
   targetKey,
   by,
   sort,
@@ -144,6 +161,7 @@ function Shelves({
 }: {
   drive: string;
   target: TargetParams | null;
+  fileIds: MemberFileIds | null;
   targetKey: number;
   by: Classification;
   sort: Sort;
@@ -161,13 +179,14 @@ function Shelves({
       (page: number): Promise<ShelvesPage> =>
         fetchShelves(drive, {
           target,
+          fileIds,
           by,
           sort,
           per_shelf: SHELF_ITEMS,
           shelf_limit: SHELVES_PER_PAGE,
           offset: (page - 1) * SHELVES_PER_PAGE,
         }).then((answer) => ({ shelves: answer.shelves, total: answer.total_shelves })),
-    [drive, target, by, sort],
+    [drive, target, fileIds, by, sort],
   );
   const library = useLibraryPages({
     fetchPage,

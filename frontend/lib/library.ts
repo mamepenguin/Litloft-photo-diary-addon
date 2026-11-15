@@ -1,4 +1,4 @@
-import type { TargetParams } from "../api";
+import type { MemberFileIds, TargetParams } from "../api";
 
 export const CLASSIFICATIONS = ["month", "tag", "collection", "folder"] as const;
 export type Classification = (typeof CLASSIFICATIONS)[number];
@@ -20,6 +20,7 @@ export type ShelvesPage = { shelves: Shelf[]; total: number };
 
 export type ShelvesQuery = {
   target: TargetParams | null;
+  fileIds?: MemberFileIds | null;
   by: Classification;
   sort: Sort;
   per_shelf: number;
@@ -29,6 +30,7 @@ export type ShelvesQuery = {
 
 export type ShelfQuery = {
   target: TargetParams | null;
+  fileIds?: MemberFileIds | null;
   by: Classification;
   key: string;
   sort: Sort;

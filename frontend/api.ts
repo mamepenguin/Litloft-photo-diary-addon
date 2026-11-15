@@ -40,32 +40,51 @@ function targetQuery(target: TargetParams | null | undefined): Query {
   return params;
 }
 
-async function get<T>(drive: string, path: string, params: Query = {}): Promise<T> {
+/** The evaluated members of a member target; an empty list selects no photo. */
+export type MemberFileIds = readonly string[];
+
+async function get<T>(
+  drive: string,
+  path: string,
+  params: Query = {},
+  fileIds?: MemberFileIds | null,
+): Promise<T> {
   const query = new URLSearchParams();
   for (const [key, value] of Object.entries(params)) {
     if (Array.isArray(value)) value.forEach((item) => query.append(key, item));
     else query.set(key, value);
   }
   const search = query.toString();
-  const response = await fetch(`${BASE}${path}${search ? `?${search}` : ""}`, {
-    headers: { "X-Lit-Drive": encodeURIComponent(drive) },
-  });
+  const headers: Record<string, string> = { "X-Lit-Drive": encodeURIComponent(drive) };
+  const init: RequestInit = { headers };
+  if (fileIds !== undefined && fileIds !== null) {
+    headers["Content-Type"] = "application/json";
+    init.method = "POST";
+    init.body = JSON.stringify({ file_ids: fileIds });
+  }
+  const response = await fetch(`${BASE}${path}${search ? `?${search}` : ""}`, init);
   if (!response.ok) throw new ApiError(response.status);
   return (await response.json()) as T;
 }
 
-export function fetchMonths(drive: string, target?: TargetParams) {
+export function fetchMonths(drive: string, target?: TargetParams, fileIds?: MemberFileIds | null) {
   return get<{ months: { month: string; count: number }[]; undated_count: number }>(
     drive,
     "/calendar/months",
     targetQuery(target),
+    fileIds,
   );
 }
 
 export type DayEntry = { date: string; count: number; has_note?: boolean };
 
-export function fetchDays(drive: string, month: string, target?: TargetParams) {
-  return get<{ days: DayEntry[] }>(drive, "/calendar/days", { ...targetQuery(target), month });
+export function fetchDays(
+  drive: string,
+  month: string,
+  target?: TargetParams,
+  fileIds?: MemberFileIds | null,
+) {
+  return get<{ days: DayEntry[] }>(drive, "/calendar/days", { ...targetQuery(target), month }, fileIds);
 }
 
 export type NoteState = "none" | "empty" | "active" | "trashed" | "missing";
@@ -108,17 +127,17 @@ export type PhotoQuery = {
   offset?: number;
 } & TargetParams;
 
-export function fetchPhotos(drive: string, query: PhotoQuery) {
+export function fetchPhotos(drive: string, query: PhotoQuery, fileIds?: MemberFileIds | null) {
   const params: Query = targetQuery(query);
   if (query.date !== undefined) params.date = query.date;
   if (query.undated) params.undated = "true";
   if (query.limit !== undefined) params.limit = String(query.limit);
   if (query.offset !== undefined) params.offset = String(query.offset);
-  return get<{ file_ids: string[]; total: number }>(drive, "/photos", params);
+  return get<{ file_ids: string[]; total: number }>(drive, "/photos", params, fileIds);
 }
 
-export function fetchPoints(drive: string, target?: TargetParams) {
-  return get<{ points: Point[] }>(drive, "/points", targetQuery(target));
+export function fetchPoints(drive: string, target?: TargetParams, fileIds?: MemberFileIds | null) {
+  return get<{ points: Point[] }>(drive, "/points", targetQuery(target), fileIds);
 }
 
 type ShelfBody = { key: string; label: string; count: number; file_ids: string[] };
@@ -127,6 +146,7 @@ export function fetchShelves(
   drive: string,
   query: {
     target: TargetParams | null;
+    fileIds?: MemberFileIds | null;
     by: string;
     sort: string;
     per_shelf: number;
@@ -134,20 +154,26 @@ export function fetchShelves(
     offset: number;
   },
 ) {
-  return get<{ shelves: ShelfBody[]; total_shelves: number }>(drive, "/library/shelves", {
-    ...targetQuery(query.target),
-    by: query.by,
-    sort: query.sort,
-    per_shelf: String(query.per_shelf),
-    shelf_limit: String(query.shelf_limit),
-    offset: String(query.offset),
-  });
+  return get<{ shelves: ShelfBody[]; total_shelves: number }>(
+    drive,
+    "/library/shelves",
+    {
+      ...targetQuery(query.target),
+      by: query.by,
+      sort: query.sort,
+      per_shelf: String(query.per_shelf),
+      shelf_limit: String(query.shelf_limit),
+      offset: String(query.offset),
+    },
+    query.fileIds,
+  );
 }
 
 export function fetchShelf(
   drive: string,
   query: {
     target: TargetParams | null;
+    fileIds?: MemberFileIds | null;
     by: string;
     key: string;
     sort: string;
@@ -155,14 +181,19 @@ export function fetchShelf(
     offset: number;
   },
 ) {
-  return get<{ file_ids: string[]; total: number; label: string }>(drive, "/library/shelf", {
-    ...targetQuery(query.target),
-    by: query.by,
-    key: query.key,
-    sort: query.sort,
-    limit: String(query.limit),
-    offset: String(query.offset),
-  });
+  return get<{ file_ids: string[]; total: number; label: string }>(
+    drive,
+    "/library/shelf",
+    {
+      ...targetQuery(query.target),
+      by: query.by,
+      key: query.key,
+      sort: query.sort,
+      limit: String(query.limit),
+      offset: String(query.offset),
+    },
+    query.fileIds,
+  );
 }
 
 export function fetchMapConfig(drive: string) {

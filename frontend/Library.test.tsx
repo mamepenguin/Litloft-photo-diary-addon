@@ -250,6 +250,7 @@ function route(r: Req): Response {
     return json({ detail: "unexpected route" }, 500);
   }
   if (/^\/api\/drives\/[^/]+\/smart-folders$/.test(r.path)) return json(folders);
+  if (/^\/api\/drives\/[^/]+\/collections$/.test(r.path)) return json([]);
   if (/^\/api\/drives\/[^/]+\/files$/.test(r.path)) return json({ data: [], meta: { total: 999, page: 1, limit: 1 } });
   if (r.path === "/api/addons/status") return json({ addons: {}, slots: {} });
   return json({ detail: "Not Found" }, 404);
