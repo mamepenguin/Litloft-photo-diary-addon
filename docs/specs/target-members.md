@@ -292,8 +292,8 @@ I2. Under a member target whose kinds hold `image`, every photo request after re
 a member target whose kinds hold no image sends `none=true` alone and evaluates nothing.
 
 I3. A failed evaluation makes each photo surface draw its first-load failure with a retry
-that evaluates again, and a set over 10,000 the same with the この対象は使えません line and
-no retry; in both the scope line shows no count and the page never uses the default target.
+that evaluates again, and a set over 10,000 replaces each photo surface's body with the
+`EmptyState` titled この対象は使えません and no retry; in both the scope line shows no count and the page never uses the default target.
 
 I4. Nothing is restored before ready: the page's, the Library's, the calendar list's, the
 map's and the shelf page's restores wait for the members under a member target and run
