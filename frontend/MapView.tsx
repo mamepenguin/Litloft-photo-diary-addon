@@ -29,6 +29,8 @@ export type MapRestore = {
 type Props = {
   drive: string;
   active: boolean;
+  /** The page's write count, bumped by a write on any face. */
+  writeToken: number;
   /** The target the photo routes take; `null` is the default target. */
   target: TargetParams | null;
   targetId: string;
@@ -43,8 +45,8 @@ type Props = {
   onNotAvailable: () => void;
   /** The list wrote through the core, and what the page shows about the drive may have changed. */
   onRefresh: () => void;
-  /** A write through the context menu on the open list, for the faces that stay mounted. */
-  onWrite: () => void;
+  /** A write through the context menu on the open list, for the faces that stay mounted; returns the page's write count after it. */
+  onWrite: () => number;
 };
 
 const PANEL_CLASS =
@@ -66,6 +68,7 @@ function reduceTo(ids: string[], points: Point[]): string[] {
 export function MapView({
   drive,
   active,
+  writeToken,
   target,
   targetId,
   targetKey,
@@ -304,10 +307,18 @@ export function MapView({
     setToken((value) => value + 1);
     handlers.current.onRefresh();
   }, []);
+  const seenWrite = useRef(writeToken);
   const write = useCallback(() => {
+    seenWrite.current = handlers.current.onWrite();
     refresh();
-    handlers.current.onWrite();
   }, [refresh]);
+  // The points are read again as this becomes the view on screen, so the open
+  // list is all that is left to ask for.
+  useEffect(() => {
+    if (!active || writeToken === seenWrite.current) return;
+    seenWrite.current = writeToken;
+    setListToken((value) => value + 1);
+  }, [active, writeToken]);
   const retryLoad = useCallback(() => {
     setPhase("loading");
     setToken((value) => value + 1);

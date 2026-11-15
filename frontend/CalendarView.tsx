@@ -37,6 +37,8 @@ const HELD = "group-data-[wide=true]/diary:sticky group-data-[wide=true]/diary:t
 type Props = {
   drive: string;
   active: boolean;
+  /** The page's write count, bumped by a write on any face. */
+  writeToken: number;
   url: PageUrl;
   go: (mode: "push" | "replace", next: Partial<PageUrl>) => void;
   /** The target the photo routes take; `null` is the default target. */
@@ -51,8 +53,8 @@ type Props = {
   onNotAvailable: () => void;
   /** The answer's total and the target token its request was made under. */
   onTotal: (total: number, changes: number) => void;
-  /** A write through the context menu on the open list, for the faces that stay mounted. */
-  onWrite: () => void;
+  /** A write through the context menu on the open list, for the faces that stay mounted; returns the page's write count after it. */
+  onWrite: () => number;
   /** The page was opened on `?view=calendar` alone, so the first month drawn fades in. */
   freshStart: boolean;
 };
@@ -60,6 +62,7 @@ type Props = {
 export function CalendarView({
   drive,
   active,
+  writeToken,
   url,
   go,
   target,
@@ -94,10 +97,18 @@ export function CalendarView({
     setToken((value) => value + 1);
     setListToken((value) => value + 1);
   }, []);
+  const seenWrite = useRef(writeToken);
   const wrote = useCallback(() => {
+    seenWrite.current = onWrite();
     refresh();
-    onWrite();
   }, [refresh, onWrite]);
+  // The months, the days and the notes are read again as this becomes the view
+  // on screen; the list that stays mounted is not, so only it is asked for here.
+  useEffect(() => {
+    if (!active || writeToken === seenWrite.current) return;
+    seenWrite.current = writeToken;
+    setListToken((value) => value + 1);
+  }, [active, writeToken]);
   const [calendarToken, setCalendarToken] = useState(0);
   const refreshCalendar = useCallback(() => setCalendarToken((value) => value + 1), []);
 

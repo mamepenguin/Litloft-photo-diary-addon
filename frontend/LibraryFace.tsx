@@ -38,6 +38,7 @@ export function LibraryFace({
   ready,
   active,
   writeToken,
+  onWrite,
   by,
   sort,
   onChangeBy,
@@ -56,6 +57,8 @@ export function LibraryFace({
   active: boolean;
   /** Bumped by the page for a write made through another face's context menu. */
   writeToken: number;
+  /** Reports a write on the Library's photos to the page, returning the write count after it. */
+  onWrite: () => number;
   by: Classification;
   sort: Sort;
   onChangeBy: (value: Classification) => void;
@@ -87,6 +90,11 @@ export function LibraryFace({
     refresh();
   }, [active, writeToken, refresh]);
 
+  const wrote = useCallback(() => {
+    seenWrite.current = onWrite();
+    refresh();
+  }, [onWrite, refresh]);
+
   return (
     <div className="space-y-6 px-4 pb-6 pt-4">
       <div className="flex items-center gap-2">
@@ -103,7 +111,7 @@ export function LibraryFace({
           refreshToken={refreshToken}
           restore={saved}
           pathname={pathname}
-          onRefresh={refresh}
+          onRefresh={wrote}
           onDepth={onDepth}
           onRestored={() => {
             if (restored.current) {

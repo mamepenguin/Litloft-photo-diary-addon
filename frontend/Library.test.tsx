@@ -294,7 +294,10 @@ const PREF = "litloft.addon.photo_diary.";
 const PREF_KEYS = [`${PREF}classification.family`, `${PREF}sort.family`];
 const isShelves = (r: Req) => r.path === `${BASE}/library/shelves`;
 const isMonths = (r: Req) => r.path === `${BASE}/calendar/months`;
+const isPhotos = (r: Req) => r.path === `${BASE}/photos`;
+const isPoints = (r: Req) => r.path === `${BASE}/points`;
 const shelfReads = () => requests.filter(isShelves);
+const photoReads = () => requests.filter(isPhotos);
 const lastShelfRead = () => shelfReads().at(-1)!.query;
 
 // ---------------------------------------------------------------- harness
@@ -445,6 +448,26 @@ async function loadMore() {
 
 async function shelvesDrawn(n: number) {
   await waitFor(() => expect(seeAll()).toHaveLength(n));
+}
+
+async function openDayList() {
+  await click(tab("カレンダー"));
+  await click(await day("10月3日 5枚"));
+  await waitFor(() => expect(visibleGrids()).toHaveLength(1));
+  await waitFor(() =>
+    expect(within(visibleGrids()[0]).queryAllByTestId("file")).toHaveLength(5),
+  );
+}
+
+async function openMapList() {
+  await click(tab("地図"));
+  await waitFor(() => expect(mapModule.createPhotoMap).toHaveBeenCalled());
+  const options = vi.mocked(mapModule.createPhotoMap).mock.calls.at(-1)![1] as any;
+  await act(async () => void options.onPointClick(["m2026-10-0"]));
+  await waitFor(() => expect(visibleGrids()).toHaveLength(1));
+  await waitFor(() =>
+    expect(within(visibleGrids()[0]).queryAllByTestId("file")).toHaveLength(1),
+  );
 }
 
 function option(name: string): HTMLElement {
@@ -1087,26 +1110,6 @@ describe("SPEC-PD-019 I13: after a write through the context menu", () => {
 // ---------------------------------------------------------------- item 5: a write on another face
 
 describe("SPEC-PD-019 item 5: a write on the calendar or the map", () => {
-  async function openDayList() {
-    await click(tab("カレンダー"));
-    await click(await day("10月3日 5枚"));
-    await waitFor(() => expect(visibleGrids()).toHaveLength(1));
-    await waitFor(() =>
-      expect(within(visibleGrids()[0]).queryAllByTestId("file")).toHaveLength(5),
-    );
-  }
-
-  async function openMapList() {
-    await click(tab("地図"));
-    await waitFor(() => expect(mapModule.createPhotoMap).toHaveBeenCalled());
-    const options = vi.mocked(mapModule.createPhotoMap).mock.calls.at(-1)![1] as any;
-    await act(async () => void options.onPointClick(["m2026-10-0"]));
-    await waitFor(() => expect(visibleGrids()).toHaveLength(1));
-    await waitFor(() =>
-      expect(within(visibleGrids()[0]).queryAllByTestId("file")).toHaveLength(1),
-    );
-  }
-
   async function leaveWithTwoPages() {
     await settled("?view=library");
     await shelvesDrawn(12);
@@ -1150,6 +1153,38 @@ describe("SPEC-PD-019 item 5: a write on the calendar or the map", () => {
     expect(shelfReads()).toHaveLength(reads);
   });
 
+  it("SPEC-PD-019 a write on the map's point list reads it again once", async () => {
+    await settled("?view=library");
+    await shelvesDrawn(12);
+    await openMapList();
+    const release = hold(isPoints);
+    vi.mocked(coreApi.batchGetFiles).mockClear();
+    await refreshShownGrid();
+    await flush();
+    await release();
+    await waitFor(() => expect(vi.mocked(coreApi.batchGetFiles)).toHaveBeenCalledTimes(1));
+    await flush();
+    expect(vi.mocked(coreApi.batchGetFiles)).toHaveBeenCalledTimes(1);
+  });
+
+  it("SPEC-PD-019 I14 a write on the calendar makes the Library read again once, and a later return with nothing written does not", async () => {
+    await settled("?view=library");
+    await shelvesDrawn(12);
+    await openDayList();
+    const photos = photoReads().length;
+    const reads = shelfReads().length;
+    await refreshShownGrid();
+    await waitFor(() => expect(photoReads()).toHaveLength(photos + 1));
+    expect(shelfReads()).toHaveLength(reads);
+    await click(tab("ライブラリ"));
+    await waitFor(() => expect(shelfReads()).toHaveLength(reads + 1));
+    expect(seeAll()).toHaveLength(12);
+    await click(tab("カレンダー"));
+    await click(tab("ライブラリ"));
+    await flush();
+    expect(shelfReads()).toHaveLength(reads + 1);
+  });
+
   it("SPEC-PD-019 a failed re-read after a write on the calendar keeps the shelves and shows the retry", async () => {
     await settled("?view=library");
     await shelvesDrawn(12);
@@ -1164,6 +1199,56 @@ describe("SPEC-PD-019 item 5: a write on the calendar or the map", () => {
     await click(screen.getByRole("button", { name: "再試行" }));
     await waitFor(() => expect(screen.queryByText("読み込めませんでした")).toBeNull());
     expect(seeAll()).toHaveLength(12);
+  });
+});
+
+// ---------------------------------------------------------------- item 5: a write on the Library
+
+describe("SPEC-PD-019 item 5: a write on the Library", () => {
+  it("SPEC-PD-019 I14 a write on the Library makes the calendar's open day list read again once, and a later return with nothing written does not", async () => {
+    await settled("?view=library");
+    await shelvesDrawn(12);
+    await openDayList();
+    await click(tab("ライブラリ"));
+    await flush();
+    const reads = photoReads().length;
+    h.missing.add("d2026-10-03-0");
+    const shelves = shelfReads().length;
+    await refreshShownGrid();
+    await waitFor(() => expect(shelfReads()).toHaveLength(shelves + 1));
+    expect(photoReads()).toHaveLength(reads);
+    await click(tab("カレンダー"));
+    await waitFor(() => expect(photoReads()).toHaveLength(reads + 1));
+    await waitFor(() =>
+      expect(within(visibleGrids()[0]).queryAllByTestId("file")).toHaveLength(4),
+    );
+    await click(tab("ライブラリ"));
+    await click(tab("カレンダー"));
+    await flush();
+    expect(photoReads()).toHaveLength(reads + 1);
+  });
+
+  it("SPEC-PD-019 I14 a write on the Library makes the map's point list read again once, and a later return with nothing written does not", async () => {
+    const listReads = () =>
+      vi
+        .mocked(coreApi.batchGetFiles)
+        .mock.calls.filter(([want]) => (want as string[]).join() === "m2026-10-0").length;
+    await settled("?view=library");
+    await shelvesDrawn(12);
+    await openMapList();
+    await click(tab("ライブラリ"));
+    await flush();
+    const reads = listReads();
+    h.missing.add("m2026-10-0");
+    await refreshShownGrid();
+    await waitFor(() => expect(gridIds()[0][0]).toBe("m2026-10-1"));
+    expect(listReads()).toBe(reads);
+    await click(tab("地図"));
+    await waitFor(() => expect(listReads()).toBe(reads + 1));
+    await click(tab("ライブラリ"));
+    await click(tab("地図"));
+    await flush();
+    expect(listReads()).toBe(reads + 1);
   });
 });
 

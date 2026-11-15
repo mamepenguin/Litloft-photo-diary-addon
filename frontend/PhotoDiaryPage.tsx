@@ -86,11 +86,17 @@ function Session({ drive }: { drive: string }) {
   sortRef.current = sort;
 
   const [notAvailable, setNotAvailable] = useState(false);
-  // A write through any face's context menu. The Library stays mounted while
-  // it is hidden, so a counter is the only thing that tells it a write happened
-  // on another face.
+  // A write through any face's context menu. The faces stay mounted while
+  // hidden, so a counter is the only thing that tells them a write happened on
+  // another face. The face that wrote takes the number it produced, so it reads
+  // again once for its own write and not once more when it is shown.
+  const writeCount = useRef(0);
   const [writes, setWrites] = useState(0);
-  const noteWrite = useCallback(() => setWrites((value) => value + 1), []);
+  const noteWrite = useCallback(() => {
+    writeCount.current += 1;
+    setWrites(writeCount.current);
+    return writeCount.current;
+  }, []);
   const [count, setCount] = useState<{ changes: number; value: number | null }>({
     changes: -1,
     value: null,
@@ -443,6 +449,7 @@ function Session({ drive }: { drive: string }) {
             ready={target.ready}
             active={url.view === "library"}
             writeToken={writes}
+            onWrite={noteWrite}
             by={by}
             sort={sort}
             onChangeBy={changeBy}
@@ -461,6 +468,7 @@ function Session({ drive }: { drive: string }) {
             key={`${epoch}:${target.changes}`}
             drive={drive}
             active={url.view === "calendar"}
+            writeToken={writes}
             url={url.view === "library" ? calendarUrl.current : url}
             go={go}
             target={target.params}
@@ -483,6 +491,7 @@ function Session({ drive }: { drive: string }) {
             key={epoch}
             drive={drive}
             active={url.view === "map"}
+            writeToken={writes}
             target={target.params}
             targetId={target.selectedId}
             targetKey={target.changes}
