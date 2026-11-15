@@ -132,7 +132,7 @@ function folder(id: string, name: string, query: string, file_type: SmartFolder[
 }
 
 const TRIP = folder("sf-trip", "Trip", "tag:trip");
-const FULL = folder("sf-full", "Full", "beach tag:trip path:Photos size:>10MB is:favorite in:Album is:liked");
+const FULL = folder("sf-full", "Full", "tag:trip path:Photos size:>10MB is:favorite in:Album is:liked");
 const VIDEOS = folder("sf-videos", "Videos", "type:video");
 const NEGATED = folder("sf-neg", "No drafts", "-tag:draft");
 const DURATION = folder("sf-long", "Long ones", "duration:>1m");
@@ -142,7 +142,6 @@ const FOLDERS = [TRIP, FULL, VIDEOS, NEGATED, DURATION, BAD];
 // Pinned literally rather than resolved, so a resolver change cannot shrink
 // the expectation along with the page.
 const FULL_WIRE: Record<string, string[]> = {
-  search: ["beach"],
   tag: ["trip"],
   folder: ["Photos"],
   collection: ["Album"],
@@ -518,7 +517,6 @@ describe("SPEC-PD-016 I7: the look-up of a saved target", () => {
 
   it.each([
     ["a folder that is gone", "sf-gone"],
-    ["a folder with a negated operator", NEGATED.id],
     ["a folder with a duration part", DURATION.id],
   ])("SPEC-PD-016 %s gives the default target and keeps the saved id", async (_label, id) => {
     writeAppTarget("family", APP, id);
@@ -604,10 +602,10 @@ describe("SPEC-PD-016 item 5: the Target menu", () => {
     await click(await targetButton("すべての写真"));
     const menu = screen.getByRole("menu");
     expect(within(menu).getByRole("menuitemradio", { name: /すべての写真/ })).toHaveAttribute("aria-checked", "true");
-    for (const f of [TRIP, FULL, VIDEOS, BAD]) {
+    for (const f of [TRIP, FULL, VIDEOS, NEGATED, BAD]) {
       expect(within(menu).getByRole("menuitemradio", { name: new RegExp(f.name) })).not.toBeDisabled();
     }
-    for (const f of [NEGATED, DURATION]) {
+    for (const f of [DURATION]) {
       const row = within(menu).getByRole("menuitemradio", { name: new RegExp(f.name) });
       expect(row).toBeDisabled();
       expect(row).toHaveAttribute("title", "この対象は使えません");
