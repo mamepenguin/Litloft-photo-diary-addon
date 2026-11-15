@@ -3,7 +3,7 @@
 SPEC-ID: SPEC-PD-021
 SPEC-ID: SPEC-PD-022
 
-Approval:
+Approval: sha256:066b20a60daa681a4f5370c5c6fbde37be0be877575c7f2683264a12e656f366 Yuichi Senga 2026-11-15
 
 ## Summary
 
