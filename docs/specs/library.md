@@ -4,7 +4,7 @@ SPEC-ID: SPEC-PD-018
 SPEC-ID: SPEC-PD-019
 SPEC-ID: SPEC-PD-020
 
-Approval:
+Approval: sha256:91a93dc7fa4ad1b3c1bc8d1a574ac03ebb146b658934a086e33febd9bc8bc18b Yuichi Senga 2026-11-15
 
 ## Summary
 
