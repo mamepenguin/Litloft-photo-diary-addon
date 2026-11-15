@@ -20,7 +20,7 @@ type Props = {
   loading: boolean;
   /** Whether the calendar view is on screen. */
   active: boolean;
-  /** The page was opened with no query, so its first month is drawn with the fade. */
+  /** The page was opened on `?view=calendar` alone, so its first month is drawn with the fade. */
   freshStart: boolean;
   preview: DayPreview;
   onPick: (date: string) => void;
@@ -34,8 +34,8 @@ export function MonthGrid({ month, days, openDate, loading, active, freshStart, 
   const lastDrawn = useRef<string | null>(null);
 
   // The surfaces fade when a month other than the last one drawn on screen
-  // appears, and on the first draw of a page opened with no query. A refresh
-  // or a re-read of the same month leaves `lastDrawn` as it is.
+  // appears, and on the first draw of a page opened on `?view=calendar` alone.
+  // A refresh or a re-read of the same month leaves `lastDrawn` as it is.
   useLayoutEffect(() => {
     if (loading || !active || lastDrawn.current === month) return;
     const first = lastDrawn.current === null;

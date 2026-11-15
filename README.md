@@ -1,13 +1,22 @@
 # Photo Diary
 
-An addon for [Litloft](https://github.com/mamepenguin/Litloft) that shows the photos of the current drive in two ways: on a month calendar and on a map.
+An addon for [Litloft](https://github.com/mamepenguin/Litloft) that shows the photos of the current drive in three ways: as a library of shelves, on a month calendar and on a map.
 
+- **Library.** The page opens here. Photos are grouped into shelves by capture month, tag, collection or folder, and by newest or oldest first; both choices are remembered per drive. Each shelf shows its first photos and a **See all** link to a page of that shelf's photos. See [Library and the shelf page](#library-and-the-shelf-page).
 - **Calendar.** Days with photos show their count, on a deeper tint the more photos the day holds. Resting the pointer on a day previews one of its photos. On a narrow screen a one-week strip stays under the app header while a day's photos scroll. Pressing a day lists its photos. Photos without a capture date are listed under "No capture date". Every day can be pressed, and a **Today** control goes to the current date.
 - **Notes.** A day can have one short Markdown note, shown above its photos in the day's panel and marked in the calendar. See [Daily notes](#daily-notes).
 - **Map.** Photos with a GPS position are drawn as thumbnails that merge and split as you zoom; a badge shows how many photos a thumbnail stands for. Pressing one lists the photos it stands for, one section per capture date. A section heading links to that day in the calendar. North stays at the top: dragging and pinching move and zoom the map without rotating it.
 - **Target.** The header's Target chooses the whole drive or one of its smart collections; the calendar's counts, a day's photos, the map's pins and the header's count follow it, and a note stays on its date under every target.
 
 Photos are placed by the capture date and GPS position the core already stores for each image. The addon owns no table, and its backend writes nothing. Notes are created and restored by the page through the core's public API. It is drive-scoped: it reads one drive at a time, and only drives the viewer may open and whose addon policy allows it.
+
+## Library and the shelf page
+
+The page opens on the Library, at `?view=library`. The **Group by** menu chooses capture month, tag, collection or folder; **Sort** chooses newest or oldest first. Both are saved in this browser per drive and are in force on the next visit. Changing either redraws the shelves from the top without changing the address.
+
+A shelf shows its photos' first line and a **See all** link. That link opens `/drive/{drive}/addons/photo_diary/shelf?by=…&key=…`, one shelf's photos as the core's justified grid, 40 more as the end of the list nears. Its **Sort** control changes only that page, so the Library keeps its own choice. Going back from a photo returns to the same shelves and place; Back from the shelf page and a reload of either address return to what was left there. A photo trashed or moved on one view is gone from the others when you come back to them: from the Library's shelves after a write on the calendar's or the map's list, and from the calendar's or the map's open list after one in the Library.
+
+The calendar and the map stay at the addresses they had; their photos and counts follow the same Target.
 
 ## Daily notes
 

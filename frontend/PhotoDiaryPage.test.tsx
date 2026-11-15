@@ -150,6 +150,8 @@ vi.mock("./api", () => {
     fetchPoints: vi.fn(),
     fetchMapConfig: vi.fn(),
     fetchNote: vi.fn(),
+    fetchShelves: vi.fn(async () => ({ shelves: [], total_shelves: 0 })),
+    fetchShelf: vi.fn(async () => ({ file_ids: [], total: 0, label: "" })),
   };
 });
 
@@ -346,7 +348,7 @@ afterEach(() => {
   delete (Element.prototype as any).scrollTop;
 });
 
-function renderPage(search = "", locale: "ja" | "en" = "ja") {
+function renderPage(search = "?view=calendar", locale: "ja" | "en" = "ja") {
   const base = `/drive/${h.drive.current}/addons/photo_diary`;
   window.history.replaceState(null, "", `${base}${search}`);
   const tree = () => (
@@ -395,7 +397,7 @@ const click = (el: HTMLElement) => act(async () => void fireEvent.click(el));
 const tab = (name: string) => screen.getByRole("tab", { name });
 const lastGrid = () => h.gridProps.at(-1)!;
 
-const settled = async (search = "", locale: "ja" | "en" = "ja") => {
+const settled = async (search = "?view=calendar", locale: "ja" | "en" = "ja") => {
   const r = renderPage(search, locale);
   await flush();
   return r;
@@ -684,8 +686,8 @@ describe("SPEC-PD-001: page URL", () => {
     expect(renderedIds()).toEqual([]);
   });
 
-  it.each(["?month=2026-13", "?month=abc", "?date=2026-02-30", "?view=bogus"])(
-    "malformed or unknown %s is treated as absent: the newest month, no list",
+  it.each(["?view=calendar&month=2026-13", "?view=calendar&month=abc", "?view=calendar&date=2026-02-30"])(
+    "malformed %s is treated as absent: the newest month, no list",
     async (search) => {
       await settled(search);
       await day("10月3日 5枚");
@@ -748,8 +750,8 @@ describe("SPEC-PD-001: page URL", () => {
 
 describe("SPEC-PD-001 failure cases: not available", () => {
   const sources: [string, () => void, string][] = [
-    ["calendar/months", () => vi.mocked(api.fetchMonths).mockRejectedValue(apiError(404)), ""],
-    ["calendar/days", () => vi.mocked(api.fetchDays).mockRejectedValue(apiError(404)), ""],
+    ["calendar/months", () => vi.mocked(api.fetchMonths).mockRejectedValue(apiError(404)), "?view=calendar"],
+    ["calendar/days", () => vi.mocked(api.fetchDays).mockRejectedValue(apiError(404)), "?view=calendar"],
     ["photos", () => vi.mocked(api.fetchPhotos).mockRejectedValue(apiError(404)), "?date=2026-10-03"],
     ["points", () => vi.mocked(api.fetchPoints).mockRejectedValue(apiError(404)), "?view=map"],
     ["map-config", () => vi.mocked(api.fetchMapConfig).mockRejectedValue(apiError(404)), "?view=map"],
@@ -1036,6 +1038,7 @@ describe("SPEC-PD-001 / I6: saved state and fresh starts", () => {
     window.history.replaceState(null, "", "/drive/work/addons/photo_diary");
     page.again();
     await flush();
+    await click(tab("カレンダー"));
     await day("5月9日 1枚");
     expect(api.fetchMonths).toHaveBeenCalledWith("work");
     expect(renderedIds()).toEqual([]);
@@ -1051,6 +1054,7 @@ describe("SPEC-PD-001 / I6: saved state and fresh starts", () => {
     window.history.replaceState(null, "", "/drive/work/addons/photo_diary");
     page.again();
     await flush();
+    await click(tab("カレンダー"));
     await day("5月9日 1枚");
     await act(async () => slow.resolve({ months: data.family.months, undated_count: 3 }));
     await flush();
@@ -1395,6 +1399,7 @@ describe("loading and refetching states of what a decision uses", () => {
     h.drive.current = "family";
     page.again();
     await flush();
+    await click(tab("カレンダー"));
     await day("10月3日 5枚");
     expect(api.fetchMonths).toHaveBeenCalledWith("family");
   });
@@ -1509,7 +1514,7 @@ describe("the scope line: the drive and its photo count on either view", () => {
     await openMap("?view=map");
     await flush();
     expect(scope()).toBe("family");
-    expect(screen.getAllByRole("tab")).toHaveLength(2);
+    expect(screen.getAllByRole("tab")).toHaveLength(3);
   });
 
   it("keeps the last count while the map's entry rereads it, and takes the new one", async () => {
@@ -1740,7 +1745,7 @@ describe("the calendar's own count and the month it lands on", () => {
     await waitFor(() => expect(renderedIds()).toHaveLength(5));
     await click(screen.getByRole("button", { name: "閉じる" }));
     await waitFor(() => expect(renderedIds()).toEqual([]));
-    expect(window.location.search).toBe("?month=2026-08");
+    expect(window.location.search).toBe("?view=calendar&month=2026-08");
     expect(await day("8月15日 5枚")).toBeInTheDocument();
   });
 
@@ -1753,7 +1758,7 @@ describe("the calendar's own count and the month it lands on", () => {
     await day("8月15日 5枚");
     expect(pushSpy).not.toHaveBeenCalled();
     expect(replaceSpy).toHaveBeenCalledTimes(1);
-    expect(window.location.search).toBe("?month=2026-08");
+    expect(window.location.search).toBe("?view=calendar&month=2026-08");
   });
 
   it("the days of the month left are not drawn while a failed month shows its error", async () => {
@@ -1830,7 +1835,7 @@ describe("a URL with no query reached while the page stays mounted", () => {
     await open(SIDEBAR_URL());
     await flush();
     expect(loadState("family")).toBeNull();
-    expect(tab("カレンダー")).toHaveAttribute("aria-selected", "true");
+    expect(tab("ライブラリ")).toHaveAttribute("aria-selected", "true");
     expect(h.handles[0].destroy).toHaveBeenCalled();
     await click(tab("地図"));
     await waitFor(() => expect(mapModule.createPhotoMap).toHaveBeenCalledTimes(2));
@@ -1840,19 +1845,25 @@ describe("a URL with no query reached while the page stays mounted", () => {
     expect(renderedIds()).toEqual([]);
   });
 
-  it("Back to the no-query entry starts over as well", async () => {
-    await settled();
-    await click(tab("地図"));
-    await waitFor(() => expect(mapModule.createPhotoMap).toHaveBeenCalled());
-    await clickPoint(point([0, 1]));
+  it("Back to the Library entry a fresh start left keeps what the map holds", async () => {
+    saveState("family", { center: [140, 36], zoom: 12, pointIds: ["a0", "a1"] });
+    await settled("?view=map");
     await waitFor(() => expect(renderedIds()).toEqual(["a0", "a1"]));
+    await click(tab("ライブラリ"));
+    await waitFor(() => expect(window.location.search).toBe("?view=library"));
+    await click(tab("地図"));
+    await waitFor(() => expect(tab("地図")).toHaveAttribute("aria-selected", "true"));
+    await clickPoint(point([2, 3]));
+    await waitFor(() => expect(renderedIds()).toEqual(["a2", "a3"]));
     await goBack();
     await flush();
-    expect(loadState("family")).toBeNull();
+    await waitFor(() => expect(window.location.search).toBe("?view=library"));
+    expect(tab("ライブラリ")).toHaveAttribute("aria-selected", "true");
+    expect(loadState("family")?.pointIds).toEqual(["a2", "a3"]);
     await click(tab("地図"));
-    await waitFor(() => expect(mapModule.createPhotoMap).toHaveBeenCalledTimes(2));
     await flush();
-    expect(renderedIds()).toEqual([]);
+    expect(renderedIds()).toEqual(["a2", "a3"]);
+    expect(mapModule.createPhotoMap).toHaveBeenCalledTimes(1);
   });
 
   it("brings back a page that said not available, so it is fetched again", async () => {
@@ -1860,6 +1871,7 @@ describe("a URL with no query reached while the page stays mounted", () => {
     await settled("?month=2026-10");
     expect(await screen.findByText("このドライブでは使えません")).toBeInTheDocument();
     await open(SIDEBAR_URL());
+    await click(tab("カレンダー"));
     expect(await day("10月3日 5枚")).toBeInTheDocument();
   });
 
@@ -1868,7 +1880,7 @@ describe("a URL with no query reached while the page stays mounted", () => {
     await clickPoint(point([0, 1]));
     await waitFor(() => expect(renderedIds()).toEqual(["a0", "a1"]));
     await click(tab("カレンダー"));
-    expect(window.location.search).toBe("");
+    expect(window.location.search).toBe("?view=calendar");
     expect(loadState("family")?.pointIds).toEqual(["a0", "a1"]);
     await click(tab("地図"));
     await flush();

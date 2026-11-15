@@ -5,6 +5,7 @@ import coreJa from "@/messages-core/ja.json";
 import en from "../../../frontend/messages/en.json";
 import ja from "../../../frontend/messages/ja.json";
 import PhotoDiaryPage from "../../../frontend/PhotoDiaryPage";
+import ShelfPage from "../../../frontend/pages/shelf";
 import { usePathname, useSearchParams } from "./navigation";
 
 // gray-matter, which the core's MarkdownPreview reads frontmatter with, calls
@@ -13,12 +14,17 @@ const scope = globalThis as { Buffer?: { from: (text: string) => Uint8Array } };
 scope.Buffer ??= { from: (text) => new TextEncoder().encode(text) };
 
 // A file's own page replaces the diary, as the app's router does: the diary
-// unmounts and the document becomes short.
+// unmounts and the document becomes short. The shelf page is its own path,
+// `…/photo_diary/shelf`, so `See all` reaches it as it does in the app.
 function App() {
-  const file = useSearchParams().get("file");
-  const editor = usePathname().startsWith("/files/");
+  const search = useSearchParams();
+  const pathname = usePathname();
+  const file = search.get("file");
+  const editor = pathname.startsWith("/files/");
   if (editor) return <div id="editor-page" className="h-40 p-4">editor</div>;
-  return file === null ? <PhotoDiaryPage /> : <div id="file-page" className="h-40 p-4">{file}</div>;
+  if (file !== null) return <div id="file-page" className="h-40 p-4">{file}</div>;
+  if (pathname.endsWith("/shelf")) return <ShelfPage />;
+  return <PhotoDiaryPage />;
 }
 
 const japanese = window.location.hash === "#ja";

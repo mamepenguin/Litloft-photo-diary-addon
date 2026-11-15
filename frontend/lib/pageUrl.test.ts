@@ -4,20 +4,31 @@ import { parsePageUrl } from "./pageUrl";
 const EMPTY = { view: "calendar", month: null, date: null, undated: false };
 
 describe("parsePageUrl", () => {
-  // SPEC-PD-001, Page URL table.
-  it("SPEC-PD-001: no query is the calendar with nothing chosen", () => {
-    expect(parsePageUrl("")).toEqual(EMPTY);
-    expect(parsePageUrl("?")).toEqual(EMPTY);
+  it("SPEC-PD-019: no query is the Library", () => {
+    expect(parsePageUrl("").view).toBe("library");
+    expect(parsePageUrl("?").view).toBe("library");
   });
+
+  it("SPEC-PD-019: view=library is the Library", () => {
+    expect(parsePageUrl("?view=library").view).toBe("library");
+  });
+
+  it.each(["?foo=bar", "?month=2026-13", "?date=2026-02-30", "?undated=false"])(
+    "SPEC-PD-019: %s, with no view and nothing the calendar can show, is the Library",
+    (search) => {
+      expect(parsePageUrl(search).view).toBe("library");
+    },
+  );
 
   it("SPEC-PD-002: view=map is the map", () => {
     expect(parsePageUrl("?view=map")).toEqual({ ...EMPTY, view: "map" });
   });
 
-  it.each(["", "bogus", "MAP", "calendar2", "list"])(
-    "SPEC-PD-001: unknown view %j is the calendar",
+  it.each(["", "bogus", "MAP", "calendar2", "list", "LIBRARY"])(
+    "SPEC-PD-019: unknown view %j is the Library",
     (view) => {
-      expect(parsePageUrl(`?view=${view}`).view).toBe("calendar");
+      expect(parsePageUrl(`?view=${view}`).view).toBe("library");
+      expect(parsePageUrl(`?view=${view}&month=2026-10`).view).toBe("library");
     },
   );
 

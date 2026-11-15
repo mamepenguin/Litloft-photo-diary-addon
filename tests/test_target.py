@@ -15,6 +15,9 @@ PHOTO_ROUTES = [
     pytest.param("/photos", {"date": "2026-10-03"}, id="day-photos"),
     pytest.param("/photos", {"undated": "true"}, id="undated-photos"),
     pytest.param("/points", {}, id="points"),
+    # SPEC-PD-018 I6: the Library routes take the same target parameters.
+    pytest.param("/library/shelves", {"by": "month"}, id="pd018-shelves"),
+    pytest.param("/library/shelf", {"by": "month", "key": "2026-10"}, id="pd018-shelf"),
 ]
 
 
@@ -317,6 +320,8 @@ EMPTY = {
     "/calendar/days": {"days": []},
     "/photos": {"file_ids": [], "total": 0},
     "/points": {"points": []},
+    "/library/shelves": {"shelves": [], "total_shelves": 0},
+    "/library/shelf": {"file_ids": [], "total": 0, "label": ""},
 }
 
 

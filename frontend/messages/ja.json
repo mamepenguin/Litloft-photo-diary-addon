@@ -12,10 +12,29 @@
     "tileError": "地図を読み込めません",
     "noWebgl": "この環境では地図を表示できません",
     "view": {
+      "library": "ライブラリ",
       "calendar": "カレンダー",
       "map": "地図",
       "label": "表示"
     },
+    "classification": "分類",
+    "classifications": {
+      "month": "撮影月",
+      "tag": "タグ",
+      "collection": "コレクション",
+      "folder": "フォルダ"
+    },
+    "sort": {
+      "label": "並べ替え",
+      "newest": "新しい順",
+      "oldest": "古い順"
+    },
+    "seeAll": "すべて見る",
+    "noPhotos": "写真はありません",
+    "noTag": "タグなし",
+    "noCollection": "コレクションなし",
+    "collection": "コレクション",
+    "invalidLink": "このリンクは開けません",
     "month": {
       "previous": "前の月",
       "next": "次の月",
@@ -24,6 +43,8 @@
     "close": "閉じる",
     "undated": "撮影日なし",
     "photoCount": "{count}枚",
+    "photoCountOne": "{count}枚",
+    "photoCountMany": "{count}枚",
     "target": "対象",
     "allPhotos": "すべての写真",
     "targetUnavailable": "この対象は使えません",

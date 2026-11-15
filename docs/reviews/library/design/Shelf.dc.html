@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<title>フォトダイアリー 棚のページ</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<style>
+body{margin:0}
+a{color:inherit;text-decoration:none}
+</style>
+</helmet>
+<div style="width:1280px;height:900px;box-sizing:border-box;background:#ffffff;color:#211922;font-family:-apple-system,system-ui,'Segoe UI',Roboto,'Helvetica Neue','ヒラギノ角ゴ Pro W3',Meiryo,sans-serif;display:flex;overflow:hidden">
+
+<aside style="width:240px;flex-shrink:0;background:#f6f6f3;border-right:1px solid rgba(145,145,140,0.2)"></aside>
+
+<main style="flex:1 1 auto;min-width:0">
+<header style="padding:8px 16px 0;display:flex;flex-direction:column;gap:4px">
+<a href="Main.dc.html" style="display:flex;align-items:center;gap:4px;font-size:14px;color:#62625b;min-height:32px"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m15 18-6-6 6-6"/></svg>フォトダイアリー</a>
+<div style="display:flex;align-items:flex-start;gap:12px">
+<div style="width:40px;height:40px;flex-shrink:0;border-radius:12px;background:#f6f6f3;display:flex;align-items:center;justify-content:center"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 22H4a2 2 0 0 1-2-2V6"/><path d="m22 13-1.296-1.296a2.41 2.41 0 0 0-3.408 0L11 18"/><circle cx="12" cy="8" r="2"/><rect width="16" height="16" x="6" y="2" rx="2"/></svg></div>
+<div style="flex:1 1 auto;min-width:0">
+<h1 style="margin:0;font-size:24px;line-height:1.35;font-weight:700">2026年10月</h1>
+<div style="margin-top:4px;font-size:14px;color:#62625b">photos · 251枚</div>
+</div>
+<div style="display:flex;align-items:center;gap:4px;flex-shrink:0">
+<button type="button" aria-label="並べ替え: 新しい順" style="display:inline-flex;align-items:center;gap:4px;min-height:36px;padding:4px 8px;border:0;border-radius:12px;background:transparent;color:#62625b;font:inherit;font-size:14px"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m3 16 4 4 4-4"/><path d="M7 20V4"/><path d="m21 8-4-4-4 4"/><path d="M17 4v16"/></svg>新しい順<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg></button>
+<button type="button" aria-label="対象: すべての写真" style="display:inline-flex;align-items:center;gap:4px;min-height:36px;padding:4px 8px;border:0;border-radius:12px;background:transparent;color:#62625b;font:inherit;font-size:14px"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></svg><span>すべての写真</span><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg></button>
+</div>
+</div>
+</header>
+
+<div style="padding:20px 16px 0;display:flex;flex-direction:column;gap:4px">
+<sc-for list="{{rows}}" as="r" hint-placeholder-count="4">
+<div style="display:flex;gap:4px;height:{{r.h}}">
+<sc-for list="{{r.photos}}" as="p" hint-placeholder-count="5">
+<div style="flex:{{p.grow}} 1 0;border-radius:6px;background:{{p.bg}}"></div>
+</sc-for>
+</div>
+</sc-for>
+</div>
+</main>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1280,"height":900}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const tones = ['#d9d4cb','#cdd5d1','#d8ccc6','#d2d3c6','#cfd1d8','#dccfc4','#c9d3cb','#d6cfd8'];
+    const sets = [[0.75,1.33,1.5,0.75,1.33],[1.78,0.75,1.33,1.33],[1.33,1.33,0.75,0.75,1.5],[0.75,1.78,1.33,1.33]];
+    const rows = sets.map((set, k) => {
+      const sum = set.reduce((a, b) => a + b, 0);
+      return { h: Math.round(1008 / sum) + 'px', photos: set.map((r, i) => ({ grow: String(r), bg: tones[(i + k) % tones.length] })) };
+    });
+    return { rows };
+  }
+}
+</script>
+</body>
+</html>

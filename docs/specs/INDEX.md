@@ -7,3 +7,6 @@
 | SPEC-PD-015 | implemented | docs/specs/neutral-dark-map.md | sha256:70da9a195522e8d04506135b66c615a955906ea441f7041435fdf1d436d31912 |
 | SPEC-PD-016 | implemented | docs/specs/app-target.md | sha256:858f86b43d74dd22d947dd21e3207661a4845d4fa12b57c3ac22f898028bbd41 |
 | SPEC-PD-017 | implemented | docs/specs/app-target.md | sha256:858f86b43d74dd22d947dd21e3207661a4845d4fa12b57c3ac22f898028bbd41 |
+| SPEC-PD-018 | approved | docs/specs/library.md | sha256:91a93dc7fa4ad1b3c1bc8d1a574ac03ebb146b658934a086e33febd9bc8bc18b |
+| SPEC-PD-019 | approved | docs/specs/library.md | sha256:91a93dc7fa4ad1b3c1bc8d1a574ac03ebb146b658934a086e33febd9bc8bc18b |
+| SPEC-PD-020 | approved | docs/specs/library.md | sha256:91a93dc7fa4ad1b3c1bc8d1a574ac03ebb146b658934a086e33febd9bc8bc18b |

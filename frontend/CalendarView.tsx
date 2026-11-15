@@ -37,6 +37,8 @@ const HELD = "group-data-[wide=true]/diary:sticky group-data-[wide=true]/diary:t
 type Props = {
   drive: string;
   active: boolean;
+  /** The page's write count, bumped by a write on any face. */
+  writeToken: number;
   url: PageUrl;
   go: (mode: "push" | "replace", next: Partial<PageUrl>) => void;
   /** The target the photo routes take; `null` is the default target. */
@@ -51,13 +53,16 @@ type Props = {
   onNotAvailable: () => void;
   /** The answer's total and the target token its request was made under. */
   onTotal: (total: number, changes: number) => void;
-  /** The page was opened with no query, so the first month drawn fades in. */
+  /** A write through the context menu on the open list, for the faces that stay mounted; returns the page's write count after it. */
+  onWrite: () => number;
+  /** The page was opened on `?view=calendar` alone, so the first month drawn fades in. */
   freshStart: boolean;
 };
 
 export function CalendarView({
   drive,
   active,
+  writeToken,
   url,
   go,
   target,
@@ -69,6 +74,7 @@ export function CalendarView({
   onRestored,
   onNotAvailable,
   onTotal,
+  onWrite,
   freshStart,
 }: Props) {
   const t = useTranslations("photoDiary");
@@ -91,6 +97,18 @@ export function CalendarView({
     setToken((value) => value + 1);
     setListToken((value) => value + 1);
   }, []);
+  const seenWrite = useRef(writeToken);
+  const wrote = useCallback(() => {
+    seenWrite.current = onWrite();
+    refresh();
+  }, [refresh, onWrite]);
+  // The months, the days and the notes are read again as this becomes the view
+  // on screen; the list that stays mounted is not, so only it is asked for here.
+  useEffect(() => {
+    if (!active || writeToken === seenWrite.current) return;
+    seenWrite.current = writeToken;
+    setListToken((value) => value + 1);
+  }, [active, writeToken]);
   const [calendarToken, setCalendarToken] = useState(0);
   const refreshCalendar = useCallback(() => setCalendarToken((value) => value + 1), []);
 
@@ -168,7 +186,8 @@ export function CalendarView({
       ? "undated"
       : null;
 
-  // `go` drops the view from the URL, so only the view on screen may call it.
+  // Only the view on screen may rewrite the URL, so a hidden face cannot take
+  // the address away from the one that is drawn.
   useEffect(() => {
     if (active && months !== null && url.undated && undatedCount === 0) go("replace", { month: url.month });
   }, [active, months, url.undated, url.month, undatedCount, go]);
@@ -435,7 +454,7 @@ export function CalendarView({
               className="min-w-0 group-data-[wide=false]/diary:mt-6"
             >
               {({ files, moreMayFollow }) => (
-                <FileGrid files={files} moreMayFollow={moreMayFollow} onRefresh={refresh} />
+                <FileGrid files={files} moreMayFollow={moreMayFollow} onRefresh={wrote} />
               )}
             </PhotoList>
           )}

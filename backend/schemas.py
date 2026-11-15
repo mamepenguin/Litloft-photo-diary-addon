@@ -28,6 +28,24 @@ class PhotoIdsResponse(BaseModel):
     total: int
 
 
+class ShelfEntry(BaseModel):
+    key: str
+    label: str
+    count: int
+    file_ids: list[str]
+
+
+class ShelvesResponse(BaseModel):
+    shelves: list[ShelfEntry]
+    total_shelves: int
+
+
+class ShelfResponse(BaseModel):
+    file_ids: list[str]
+    total: int
+    label: str
+
+
 class Point(BaseModel):
     file_id: str
     lat: float
