@@ -24,7 +24,9 @@ spec brings both to Photo Diary. The user is the one person who runs Litloft.
 SPEC-CORE-119) in the core repository: `TargetMenuProps.collections`, the target-id and
 collection-target helpers, the member-target helpers and `filtered_drive_files`'s
 `file_ids` on the documented surface. The two specs are approved together; the core change
-merges to the core's `develop` first, and this addon's pull request follows.
+merges to the core's `develop` first, and this addon's pull request follows. The Library
+(SPEC-PD-018 to 020) is already merged on `main` (pull request #11), and this change builds
+on it.
 
 Out of scope: daily notes (they keep ignoring the target); video in Photo Diary; the
 Library's own classification and sort.
@@ -32,16 +34,17 @@ Library's own classification and sort.
 ## Agreed design
 
 No new artboard (agreed). The Target menu and Manage… are the core's (SPEC-CORE-118, D5
-icons). A failure reuses this addon's `LoadError` (読み込めませんでした and 再試行); a
-member set that is too large reuses the `targetUnavailable` line この対象は使えません /
-This target cannot be used.
+icons). A failed evaluation or a member set too large is drawn where and as each photo
+surface draws the failure of its first load today (item 1.6); the too-large text is the
+existing `targetUnavailable` string この対象は使えません / This target cannot be used.
 
 ## Definitions
 
 - **Member target.** A Smart Collection target whose saved query has free text
-  (`parseSearchQuery(query).text` non-empty; a negated token is free text), decided by the
-  core's `resolveMemberTarget(folder, ["image"])`. Its kinds are the folder's kinds met with
-  `image`.
+  (`parseSearchQuery(query).text` non-empty), decided by the core's
+  `resolveMemberTarget(folder, ["image"])`. A negated token such as `-tag:draft` is free
+  text to `parseSearchQuery`, so every Smart Collection with a negated operator is a member
+  target, as in the core's apps. Its kinds are the folder's kinds met with `image`.
 - **Members.** The result of the core's `evaluateMemberTarget(drive, folder)`: `ready` with
   the evaluated file ids (what the Smart Collection's search page lists in the Files view,
   meaning search included), `failed`, or `tooLarge` (more than 10,000 ids, counted before
@@ -49,10 +52,15 @@ This target cannot be used.
 - **Collection target.** A target id `collection:<id>` (core SPEC-CORE-118), resolved with
   the core's `resolveCollectionTarget(collection, ["image"])`.
 - **Listing-parameter target.** Any other Smart Collection target, resolved by
-  `resolveAppTarget` exactly as today.
+  `resolveAppTarget` exactly as today. After this change only a Smart Collection with a
+  duration part and no free text is unusable.
 - **Photo routes.** `GET /calendar/months`, `GET /calendar/days`, `GET /photos`,
   `GET /points`, `GET /library/shelves`, `GET /library/shelf`. `/note` and `/map-config` are
   not photo routes.
+- **Target query parameters.** `search`, `tag`, `folder`, `collection`, `size`,
+  `favorite`, `liked`, `none`.
+- **Ready.** The look-up of `app-target.md` item 4 has ended and, under a member target
+  whose kinds hold `image`, the members are `ready`.
 
 ## Required items
 
@@ -60,59 +68,78 @@ This target cannot be used.
 
 **SPEC-PD-021 (member targets).**
 
-1. *Backend.* Each photo route also accepts `POST` at the same path, with every query
-   parameter its `GET` takes (with the same validation and defaults) and a JSON body
-   `{"file_ids": [string, ...]}`: required, at most 10,000 entries, no empty string;
-   duplicates change nothing. The photo set is narrowed with `filtered_drive_files(db,
-   drive, type=["image"], <the target query parameters>, file_ids=<body>)`, so with no
-   `collection` parameter a photo is in the set only when its id is listed, and
-   `file_ids: []` selects no photo. Each answer equals the `GET`'s answer for the photos so
-   selected, counts, ordering and paging included. `none=true` with a `POST` answers 422
-   (the body counts as a target). The `GET` routes are unchanged.
-2. *Menu.* A member target is usable whatever else its query holds: Photo Diary's
-   `isUsable` returns true for it, so the Target menu and Manage… never list it disabled.
-   This is decided from the saved query alone.
+1. *Backend.* Each photo route also accepts `POST` at the same path. It takes the `GET`'s
+   query parameters other than the target query parameters, with the same validation and
+   defaults (`month`, `date`, `undated`, `by`, `key`, `sort`, `offset`, `limit`,
+   `per_shelf`, `shelf_limit`, as each route has them), and a JSON body
+   `{"file_ids": [string, ...]}`: required, at most 10,000 entries counting duplicates, no
+   empty string; duplicates otherwise change nothing. Any target query parameter on a `POST`
+   answers 422. The photo set is the drive's active images whose id is listed (an
+   addon-owned body model; the photo set is narrowed with `filtered_drive_files(db, drive,
+   type=["image"], file_ids=<body>)` or the equivalent `File.id IN` on the existing
+   `_photos` query), so `file_ids: []` selects no photo. Each answer equals what the `GET`
+   answers for that photo set, counts, ordering, paging, `undated_count`, shelves and
+   points included. The `GET` routes are unchanged.
+2. *Menu.* Photo Diary's `isUsable` returns true for a member target, so the Target menu
+   and Manage… never list it disabled. This is decided from the saved query alone.
 3. *Kinds.* When the member target's kinds hold no image, the target is today's empty
    target: every photo request sends `none=true` alone, and nothing is evaluated.
-4. *Evaluation.* Otherwise, once the Smart Collection list has loaded and the target is in
-   force, the page (`PhotoDiaryPage`) and the shelf page (`ShelfPage.tsx`) each evaluate
-   the members when they mount and when the target changes to a member target, and hold the
-   ids for that mount. While evaluating, no photo request goes out; each photo surface
-   shows what it shows while a saved target is looked up today; the Target control shows
-   the Smart Collection's name; the scope line shows the drive name alone.
-5. *Requests.* When the members are `ready`, every photo request of the page and the shelf
-   page goes through the `POST` route with the members as `file_ids` and none of the
-   target's query parameters (`search`, `tag`, `folder`, `collection`, `size`, `favorite`,
-   `liked`, `none`). The request's own parameters (month, date, `undated`, `by`, `key`,
-   `sort`, offset and limit) are sent as on the `GET`. An empty member list is sent as
-   `file_ids: []`, never as an absent body.
-6. *Failure.* When the evaluation is `failed`, every photo surface's body (the Calendar
-   view, the Map view, the Library face and the shelf page's photos) is replaced by one
-   `LoadError` whose 再試行 evaluates again; when it is `tooLarge`, by the
-   この対象は使えません line with no retry. The scope line shows the drive name alone, the
-   Target control shows the Smart Collection's name, and the page never falls back to the
-   default target because of either.
-7. *Target change.* Choosing a member target in the menu is a target change as today
-   (`app-target.md` item 8): surfaces go back to their loading state, saved list positions
-   and the pin list are cleared, and a response under the previous target is discarded.
-   An evaluation that finishes, and a 再試行 after a failure, are not target changes: the
-   surfaces draw as on their first draw under the target, and nothing saved is cleared.
-8. *Going back.* The saved state's target is the target id in force. On going back to the
-   page, the restore check of `app-target.md` item 8 runs once the target is ready (look-up
-   done and, for a member target, members `ready`). Members are evaluated again on that
-   mount, so a photo the meaning search no longer returns is gone from the restored view.
-   Under a failure or a set too large nothing is restored and the saved state is kept.
+4. *Evaluation.* Otherwise, once the look-up has ended with a member target in force, the
+   page (`PhotoDiaryPage`) and the shelf page (`ShelfPage.tsx`) each evaluate the members
+   with the core's `useMemberTarget`: when they mount, and when the target changes to a
+   member target. They hold the ids for that mount. While evaluating, the page is not
+   ready: no photo request goes out; each photo surface shows what it shows today while the
+   look-up runs; the Target control shows the Smart Collection's name; the scope line shows
+   the drive name alone.
+5. *Ready gates.* Everything that today waits for the end of the look-up waits for ready:
+   photo requests, the page's and the shelf page's count read, the page's restore check
+   (`app-target.md` item 8), the Library's restore (`library.md`), the shelf page's restore
+   from `photo_diary:shelf:<drive>`, the calendar list's restore, and the start of the daily
+   notes' second-read clock.
+6. *Requests.* When ready, every photo request of the page and the shelf page (the
+   calendar, a day's list and its preview, "No capture date", the map's points and pin
+   lists, the Library's shelves and the shelf page) goes through the `POST` route with the
+   members as `file_ids` and no target query parameter; the request's own parameters are
+   sent as on the `GET`. An empty member list is sent as `file_ids: []`, never as an absent
+   body or a `GET`.
+7. *Failure.* When the evaluation is `failed`, each photo surface draws what it draws today
+   when its first load fails, and its retry control evaluates again:
+   - the Calendar view: `LoadError` alone, as on a failed first `/calendar/months` (no
+     month bar, grid or note marks);
+   - the Map view: `LoadError` as in its `failed` phase (no map stage);
+   - the Library face: the `RetryButton` it shows when its first shelves load fails;
+   - the shelf page: its header and sort control stay and `LoadError` shows as when its
+     first page fails; a collection shelf's title shows what it shows before its first
+     answer.
+   When it is `tooLarge`, each surface draws the same thing with the この対象は使えません
+   line in place of the error text and no retry control. In both, the scope line shows the
+   drive name alone, the Target control shows the Smart Collection's name, nothing is
+   restored and the saved state is kept, and the page never falls back to the default
+   target.
+8. *What evaluates again.* A mount, a change of the target in force to a member target, and
+   a retry after a failure. Nothing else: a write through the context menu (the Library and
+   calendar re-read with the held members, so a photo whose tag was just removed stays
+   until the next evaluation), the page's in-place fresh start (it keeps the target in
+   force, so it keeps the members), and choosing the target in force again (which reloads
+   nothing, as today; under too large the way out is another target).
+9. *Target change.* Choosing a member target in the menu is a target change as today
+   (`app-target.md` item 8). The members finishing, and a retry after a failure, are not
+   target changes: the surfaces draw as on their first draw under the target and nothing
+   saved is cleared.
+10. *Going back.* The saved states' target is the target id in force. On going back, the
+    restores of item 5 run once ready; the members were evaluated again on that mount, so a
+    photo meaning search no longer returns is gone from the restored view.
 
 **SPEC-PD-022 (collection targets).**
 
-1. The page and the shelf page load the drive's collections
-   (`GET /api/drives/{drive}/collections`) with the Smart Collections and pass them to the
-   Target menu with their retry.
+1. The page and the shelf page load the drive's collections with the core's
+   `getCollections` and pass them to the Target menu as `collections` (the list and its
+   retry).
 2. A saved `collection:<id>` is looked up in the collection list only: while it loads no
    photo request goes out and the control reads `…`; a saved Smart Collection id waits for
-   the Smart Collection list only, as today.
-3. A found collection is a target: every photo request carries `collection=<its name>` and
-   no other target parameter, through the `GET` routes (the backend already takes
+   the Smart Collection list only, as today; `default` waits for neither.
+3. A found collection is a target: every photo request carries `collection=<its name>` as
+   its only target query parameter, through the `GET` routes (the backend already takes
    `collection` and narrows to images). The Target control shows its name.
 4. A collection that is not in the list, or a collection list that failed to load, gives
    the default target at once with the saved id kept; a retry that loads the list applies
@@ -123,37 +150,40 @@ This target cannot be used.
 ### 2. Failure cases
 
 - `POST` with a missing, non-list or empty-string `file_ids`, more than 10,000 entries, or
-  with `none=true`: 422. An invalid query parameter: as the `GET`. A locked drive or policy
-  off: 404, "not available" as today.
+  any target query parameter: 422. An invalid other parameter: as the `GET`. A locked drive
+  or policy off: 404, "not available" as today.
 - Evaluation throws, answers `complete: false` (including the addon status lookup
-  failing), or more than 10,000 members: 1.6. The intelligence addon off for the drive, or
-  its search answering 404, is not a failure: the members are the listing-only members, as
-  the core defines.
+  failing), or more than 10,000 members: item 1.7. The intelligence addon off for the
+  drive, or its search answering 404, is not a failure: the members are the listing-only
+  members, as the core defines.
 - A photo request under a ready member target fails: the surface's existing load error, as
   today.
 - The collection list fails: SPEC-PD-022 item 4; Manage… shows the core's retry.
-- A collection renamed while the page is open: requests keep the old name and select no
-  photo until the page loads its lists again (a mount or a retry). Accepted.
+- A collection renamed or deleted while the page is open: requests keep the old name and
+  select no photo (or a collection created with that name meanwhile) until the page loads
+  its lists again (a mount or a retry). Accepted.
 
 ### 3. States
 
 Target in force: default; listing-parameter Smart Collection; empty; member target; a
 collection. Look-up: running (no photo request, control `…`) → done, as today, per the
-list the saved id needs. Member target: evaluating (no photo request) → ready (POST
-requests) | failed (再試行 → evaluating) | too large. A mount or a target change to a member
-target starts at evaluating. Not allowed: a photo request under a member target before it
-is ready; a `GET` photo request carrying a member target's query parameters; a fall back to
-the default target from failed or too large; a request body omitted for an empty member
-list.
+list the saved id needs. Member target: evaluating (not ready) → ready (`POST` requests) |
+failed (retry → evaluating) | too large. A mount or a target change to a member target
+starts at evaluating. Not allowed: a photo request under a member target before ready; a
+`GET` photo request or a target query parameter under a member target; a fall back to the
+default target from failed or too large; an absent body for an empty member list; a
+restore before ready.
 
 ### 4. Data read and written
 
 - Read: core `files`, `file_exif` and, through `filtered_drive_files`, the tables its
   filters read; `GET /api/drives/{drive}/collections` (new), the Smart Collection list, and
-  what `evaluateMemberTarget` reads (the core listing and, when on, the intelligence
-  addon's meaning search through the core's proxy).
+  what `evaluateMemberTarget` reads (the core listing, `/api/addons/status` and, when on,
+  the intelligence addon's meaning search through the core's proxy).
 - Written: `localStorage` target and shown-set keys (unchanged keys; values may be
-  `collection:<id>`); `sessionStorage` `photo_diary:state:<drive>` as today. No table.
+  `collection:<id>`); `sessionStorage` `photo_diary:state:<drive>` and
+  `photo_diary:shelf:<drive>`, as today, kept untouched under failed and too large. No
+  table.
 
 ### 5. External services
 
@@ -162,21 +192,28 @@ as the core's apps do; slow means the page stays in evaluating, with no time lim
 
 ### 6. Authorization
 
-Unchanged: the `POST` routes run `_drive_scope` first, as the `GET` routes do, and
-`filtered_drive_files` is called with that drive, so ids of another drive select nothing.
+Unchanged: the `POST` routes run `_drive_scope` first, as the `GET` routes do, and narrow
+to `File.drive == drive`, so ids of another drive select nothing.
 
 ### 7. Effect on existing features
 
 - The default target, listing-parameter targets and empty targets: unchanged requests and
   results.
 - Smart Collections with free text that today resolve to `search` (name and path matches
-  only) now list their members; those with a negated operator or a duration part and free
-  text, unusable today, become usable.
+  only) now list their members; every Smart Collection with a negated operator, unusable
+  today, becomes a usable member target.
 - Daily notes: unchanged while the target is ready. Under a failed evaluation or a set too
-  large the Calendar view's body is replaced, so its note marks are not drawn there (as
-  under a load error today).
+  large the Calendar view draws its load failure, so its note marks are not drawn and a
+  day's note cannot be opened from the calendar until the target becomes ready or another
+  target is chosen (a saved too-large target keeps it that way on every visit).
 - The Library's classifications and shelves: computed over the target's photos, as today.
-- The e2e page support stubs the collection list and the `POST` routes.
+- Existing tests whose expectations change: in `frontend/Target.test.tsx`, `FULL`
+  (`"beach tag:trip …"`, free text) becomes a member target, so its `FULL_WIRE` assertions
+  are restated for a folder without free text (the same operators without `beach`) and a
+  new case covers `FULL` as a member target; `NEGATED` (`-tag:draft`) moves from the
+  disabled-row cases to the usable member-target cases. `tests/test_target.py` and
+  `e2e/target.spec.ts` use `GET` routes and `tag:trip` and are unchanged. No assertion is
+  otherwise loosened.
 
 ### 8. Error behavior
 
@@ -195,71 +232,78 @@ As in 2. Nothing new is logged; no log line contains a file id.
 
 - `file_ids` at most 10,000 per request; every photo request under a member target
   re-sends them (about 150 KB). The home LAN carries this.
-- Each photo route answers within 1 second at 50,000 photos with 10,000 `file_ids`,
-  measured once before merge (the bound `photo-diary.md` and `app-target.md` set).
-- One evaluation per mount and target change, not per request.
+- Each photo route, `/library/shelves` included, answers within 1 second at 50,000 photos
+  with 10,000 `file_ids`, measured once before merge (the bound `photo-diary.md` and
+  `app-target.md` set).
+- One evaluation per mount, member-target change and retry, not per request.
 
 ## Touch points
 
-- `backend/router.py` (the `POST` photo routes, the body model, `_photo_query` taking
-  `file_ids`), `backend/schemas.py` if the body model lives there, `tests/`
-- `frontend/useTarget.ts` (collections, target ids, member target and its evaluation),
-  `frontend/api.ts` (`POST` with body when the target carries members),
+- `backend/router.py` (the `POST` photo routes, their body model, `_photo_query` taking
+  the ids), `backend/schemas.py` (the body model), `tests/` (new `POST` cases)
+- `frontend/useTarget.ts` (collections, target ids, member target and its evaluation,
+  ready), `frontend/api.ts` (`POST` with body under a member target),
+  `frontend/lib/library.ts` (`ShelvesQuery` / `ShelfQuery` carrying the member shape),
   `frontend/PhotoDiaryPage.tsx`, `frontend/ShelfPage.tsx`, `frontend/LibraryFace.tsx`,
-  `frontend/CalendarView.tsx`, `frontend/MapView.tsx`, `frontend/usePagedPhotos.ts`,
-  `frontend/useLibraryPages.ts`, `frontend/LoadError.tsx` (reused), and their tests
-- `e2e/` page support (stubs for the collection list and the `POST` routes)
-- `README.md`
-- Core names used (SPEC-CORE-119): `filtered_drive_files(file_ids=)`, `parseAppTargetId`,
-  `resolveCollectionTarget`, `resolveMemberTarget`, `evaluateMemberTarget`,
-  `useMemberTarget`, `MEMBER_ID_LIMIT`, `getCollections`, `TargetMenuProps.collections`
+  `frontend/CalendarView.tsx`, `frontend/MapView.tsx`, `frontend/useDayPreview.ts`,
+  `frontend/usePagedPhotos.ts`, `frontend/useLibraryPages.ts`, `frontend/LoadError.tsx`
+  (reused), `frontend/messages/` (no new key), and their tests (`Target.test.tsx` as in 7)
+- `e2e/pageSupport.ts` (stubs for `/collections`, the `POST` routes, and the requests the
+  evaluation makes: the core listing with the folder's query, `/api/addons/status`, and the
+  intelligence search through the proxy), `e2e/build-fixture.mjs` and `e2e/fixture/page/`
+  if the page fixture is rebuilt
+- `README.md`, `docs/specs/INDEX.md`
+- Core names used (SPEC-CORE-119): `parseAppTargetId`, `resolveCollectionTarget`,
+  `resolveMemberTarget`, `evaluateMemberTarget`, `useMemberTarget`, `MEMBER_ID_LIMIT`,
+  `getCollections`, `CollectionSummary`, `TargetMenuProps.collections`, and on the backend
+  `filtered_drive_files(file_ids=)` if the route uses it
 
 ## Invariants
 
-I1. Under a ready member target, a photo appears in a day's count, tint, preview and list,
-in "No capture date", in a Library shelf or the shelf page, or as a map pin only if it is an
-active image of the drive whose id is among the evaluated members, and every such image
-appears in exactly one day list or in "No capture date" and as a pin when it has a valid
-place.
+I1. The `POST` photo routes answer exactly what the `GET` routes answer for the same other
+parameters over the photo set of the drive's active images whose id is listed
+(`file_ids: []` selects no photo, never the whole drive); they answer 422 to any target
+query parameter, a missing or invalid `file_ids`, an empty string or more than 10,000
+entries; and the `GET` routes answer exactly as before.
 
-I2. The `POST` photo routes answer exactly what the `GET` routes answer for the same query
-parameters with the photo set restricted by `file_ids` (without `collection`, only listed
-ids; `file_ids: []` selects no photo); they answer 422 to `none=true`, a missing or invalid
-`file_ids`, an empty string, or more than 10,000 ids; and the `GET` routes answer exactly as
-before.
+I2. Under a member target whose kinds hold `image`, every photo request after ready is a
+`POST` carrying the evaluated ids, an empty list included, and no target query parameter;
+a member target whose kinds hold no image sends `none=true` alone and evaluates nothing.
 
-I3. Under a member target no photo request goes out before its evaluation is ready; every
-photo request after it is a `POST` carrying the evaluated ids, an empty list included, and
-none of the Smart Collection's query parameters.
+I3. A failed evaluation makes each photo surface draw its first-load failure with a retry
+that evaluates again, and a set over 10,000 the same with the この対象は使えません line and
+no retry; in both the scope line shows no count and the page never uses the default target.
 
-I4. A failed evaluation replaces each photo surface's body with one `LoadError` whose
-再試行 evaluates again, and a set over 10,000 with the この対象は使えません line; in both
-the scope line shows no count, the Target control shows the Smart Collection's name, and
-the page never uses the default target.
+I4. Nothing is restored before ready: the page's, the Library's, the calendar list's and the
+shelf page's restores wait for the members under a member target, and under failed or too
+large nothing is restored and `photo_diary:state:<drive>` and `photo_diary:shelf:<drive>`
+are left as they were.
 
 I5. Under a collection target every photo request carries `collection` = that collection's
-name as its only target parameter, so the page shows exactly the collection's active
-images; a `collection:<id>` not in the loaded list, or a failed collection list, gives the
-default target without deleting the saved id.
+name as its only target query parameter, through the `GET` routes, so the page shows
+exactly the collection's active images; a `collection:<id>` not in the loaded list, or a
+failed collection list, gives the default target without deleting the saved id; while a
+saved `collection:<id>` is looked up no photo request goes out.
 
-I6. Under the default target, a listing-parameter Smart Collection and an empty target,
+I6. Photo Diary passes the collection list and its retry to the Target menu, so its menu
+and Manage… list the drive's collections, and choosing one saves `collection:<id>` for
+Photo Diary only.
+
+I7. Under the default target, a listing-parameter Smart Collection and an empty target,
 every photo request is exactly what it was before this change.
-
-I7. A Smart Collection with free text is never disabled in the Target menu or Manage…,
-whatever else its query holds.
 
 I8. From a target change on, including to or from a member or collection target, no count,
 tint, preview, list item, shelf, pin, pin list or N of the previous target is on screen,
-also while an evaluation runs and after it fails; an evaluation finishing or a 再試行 is
-not a target change and clears no saved state.
+also while an evaluation runs and after it fails; the members finishing or a retry is not a
+target change and clears no saved state; a mount evaluates once, not once per request.
 
 ## Revises
 
 SPEC-PD-016 I1. Under any target, a photo appears in a day's count, tint, preview and list, in "No capture date", or as a map pin only if the target selects it: the core's file listing with the same parameters and `type=image` for a listing-parameter or collection target, the evaluated members that are active images for a member target; this holds after a target change made while the other view was hidden and after a restore when going back from a photo.
 SPEC-PD-016 I2. Under any usable target that is ready, every image the target selects (as in I1) appears in exactly one day list or in "No capture date", and as a pin when it has a valid place.
-SPEC-PD-016 I5. A day's note mark, a month that holds only notes, and the note shown in a day's panel are the same under every target the backend answers and whose members, for a member target, were evaluated (under a target that answers 400, a failed evaluation or a member set too large, the calendar shows its load error or the この対象は使えません line instead).
-SPEC-PD-016 I7. A Smart Collection with a negated operator or a duration part and no free text cannot be chosen, one with free text always can; a saved target that is gone or unusable gives the default target without deleting the saved id; and while a non-default saved target is being looked up, or a member target's members are being evaluated, no photo request is sent.
-SPEC-PD-016 I11. The backend answers 422 to `none=true` sent with any target parameter or with a `file_ids` body, treats `none=false` as absent, and answers 400, not 500 or an empty result, to a target parameter the core cannot normalise.
+SPEC-PD-016 I5. A day's note mark, a month that holds only notes, and the note shown in a day's panel are the same under every target the backend answers and, for a member target, whose members were evaluated (under a target that answers 400, a failed evaluation or a member set too large, the calendar shows its load failure instead).
+SPEC-PD-016 I7. A Smart Collection with a duration part and no free text cannot be chosen, and one with free text (every one with a negated operator included) always can; a saved target that is gone or unusable gives the default target without deleting the saved id; and until the target is ready (the look-up running, or a member target's members being evaluated) no photo request is sent.
+SPEC-PD-016 I11. The backend answers 422 to `none=true` sent with any target parameter, and to a `POST` carrying any target query parameter; treats `none=false` as absent on a `GET`; and answers 400, not 500 or an empty result, to a target parameter the core cannot normalise.
 SPEC-PD-016 I16. The Target control's text and the menu's checked row always name the target in force: すべての写真 for the default and for every fallback of item 4, the Smart Collection's or collection's name otherwise (a member target's name also while it evaluates, after a failure and when too large), `…` only while the look-up runs.
 
 ## Checked, no action
@@ -268,12 +312,21 @@ SPEC-PD-016 I16. The Target control's text and the menu's checked row always nam
   dependency); the browser evaluates, as the core's apps do.
 - Narrowing the members in the browser: the calendar, map and shelves are computed on the
   server, and paging would drop members.
-- Keeping note marks under a failed evaluation: the Calendar view already hides them under a
-  load error; drawing notes without photos would need a second calendar state.
-- A cache of members across mounts (agreed not to, as the core's apps): correctness over
-  speed; going back from a photo evaluates again.
+- Combining `file_ids` with target query parameters on a `POST`: no caller needs it (a
+  member target sends no condition of its own), and the core's union meaning for
+  `collection` would make the answer depend on which parameters came along; refused with
+  422 instead.
+- Importing the core's `FileIdsQuery`: it is not on the documented surface; the addon keeps
+  its own model with the same rules.
+- Keeping note marks under a failed evaluation or a set too large: the Calendar view hides
+  them under a load failure today; drawing notes without photos would need a second
+  calendar state. The cost under a saved too-large target is in 7.
+- Evaluating again after a write or on re-choosing the target in force (decided not to):
+  one evaluation per mount, as the core's apps; a reload or another target evaluates again.
+- A cache of members across mounts (as the core's apps, not): correctness over speed.
 - A collection target by id: the backend's `collection` takes names, unique within a drive
-  across both kinds; the cost is the rename case in 2.
+  across both kinds; the cost is the rename and delete case in 2.
 - Showing new collections in a saved shown set: the core's rule (SPEC-CORE-118 item 4).
 - `/note` and `/map-config`: not photo routes, untouched.
-- A new design: agreed; the core's menu, `LoadError` and the existing string.
+- A new design: agreed; the core's menu, each surface's existing failure drawing and the
+  existing string.
