@@ -20,3 +20,7 @@ evidence: |
   6 Default target (PASS). Choosing すべての写真: control すべての写真, scope 1,009枚, every photo request (shelves, months, days, points) a GET with no target parameter and no body; localStorage holds default.
 pending: |
   Real phone and home LAN (agent_cannot_verify). The too-large drawing (more than 10,000 members) cannot be reached on this drive.
+
+## Section 10 measurement
+
+Measured once before merge by the implementer's run (throwaway script, 50,000 photos of which 45,000 dated, 10,000 member ids, best of 3 after a warm-up): POST /calendar/months 43 ms, /calendar/days 24 ms, /photos (day) 42 ms, /photos (undated) 42 ms, /points 58 ms, /library/shelves by=month 261 ms, by=tag 156 ms, by=collection 143 ms, by=folder 135 ms, /library/shelf by=month 45 ms. All within the 1 s bound.
