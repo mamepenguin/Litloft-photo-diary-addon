@@ -1169,6 +1169,20 @@ describe("SPEC-PD-024 item 10, I4, I5: the tabs and the calendar", () => {
     expect(query().has("tag")).toBe(false);
   });
 
+  it("SPEC-PD-024 I5 a Target chosen on the Calendar leaves the Library tab link with no tag", async () => {
+    await settled("?view=library&tag=beach");
+    await shelvesDrawn(5);
+    await click(tab("カレンダー"));
+    await waitFor(() => expect(query().get("view")).toBe("calendar"));
+    const at = requests.length;
+    await chooseTarget("すべての写真", "Trip");
+    await click(tab("ライブラリ"));
+    await waitFor(() => expect(query().get("view")).toBe("library"));
+    expect(query().has("tag")).toBe(false);
+    await shelvesDrawn(1);
+    for (const r of requests.slice(at)) expect(tagsOf(r)).not.toContain("beach");
+  });
+
   it("SPEC-PD-024 I5 re-choosing the Target in force and a 分類 or 並び順 choice leave tag as it was", async () => {
     await settled("?view=library&tag=beach");
     await shelvesDrawn(5);
