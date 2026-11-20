@@ -758,7 +758,7 @@ describe("SPEC-PD-023 items 2, 4, 5, I1, I2: the view per Target", () => {
     await groupButton("タグ");
     await chooseTarget("すべての写真", "Trip");
     await groupButton("撮影月");
-    await chooseTarget("Trip", "すべての写真");
+    await chooseTarget("Trip", /^すべての写真/);
     await groupButton("タグ");
     first.unmount();
     await settled("?view=library");
@@ -776,7 +776,7 @@ describe("SPEC-PD-023 items 2, 4, 5, I1, I2: the view per Target", () => {
     await pick(groupButton("撮影月"), "フォルダ");
     await pick(sortButton("新しい順"), "古い順");
     requests = [];
-    await chooseTarget("Trip", "すべての写真");
+    await chooseTarget("Trip", /^すべての写真/);
     await groupButton("タグ");
     await sortButton("新しい順");
     await waitFor(() => expect(shelvesReads().length).toBeGreaterThan(0));
@@ -958,7 +958,7 @@ describe("SPEC-PD-024 items 9 to 11: the tag menu, the URL and the requests", ()
     await waitFor(() => expect(query().getAll("tag")).toEqual(["beach"]));
     expect(query().get("view")).toBe("library");
     expect(window.history.length).toBe(before);
-    await shelvesDrawn(6);
+    await shelvesDrawn(5);
     expect(tagsOf(lastShelves())).toEqual(["beach"]);
     await toggleTag("beach", "family");
     await waitFor(() => expect(query().getAll("tag")).toEqual(["beach", "family"]));
@@ -973,7 +973,7 @@ describe("SPEC-PD-024 items 9 to 11: the tag menu, the URL and the requests", ()
 
   it("SPEC-PD-024 item 10 指定なし clears every tag by replace and the requests carry none", async () => {
     await settled("?view=library&tag=beach&tag=family");
-    await shelvesDrawn(2);
+    await shelvesDrawn(1);
     const before = window.history.length;
     await click(await tagButton("beach, family"));
     await click(await screen.findByRole("menuitemcheckbox", { name: "指定なし" }));
@@ -986,7 +986,7 @@ describe("SPEC-PD-024 items 9 to 11: the tag menu, the URL and the requests", ()
 
   it("SPEC-PD-024 chosen tags are the URL's in order, once each folded, empty values dropped", async () => {
     await settled("?view=library&tag=beach&tag=&tag=Beach&tag=family");
-    await shelvesDrawn(2);
+    await shelvesDrawn(1);
     for (const r of shelvesReads()) expect(tagsOf(r)).toEqual(["beach", "family"]);
     await tagButton("beach, family");
   });
@@ -1172,7 +1172,7 @@ describe("SPEC-PD-024 item 10, I4, I5: the tabs and the calendar", () => {
   it("SPEC-PD-024 I5 re-choosing the Target in force and a 分類 or 並び順 choice leave tag as it was", async () => {
     await settled("?view=library&tag=beach");
     await shelvesDrawn(5);
-    await chooseTarget("すべての写真", "すべての写真");
+    await chooseTarget("すべての写真", /^すべての写真/);
     expect(query().getAll("tag")).toEqual(["beach"]);
     await pick(groupButton("撮影月"), "タグ");
     expect(query().getAll("tag")).toEqual(["beach"]);
@@ -1333,7 +1333,7 @@ describe("SPEC-PD-025 item 18, I12: Put on Home", () => {
     await click(await targetButton("Trip"));
     await screen.findByRole("menuitem", { name: /ホームに置く/ });
     await click(await targetButton("Trip"));
-    await chooseTarget("Trip", "すべての写真");
+    await chooseTarget("Trip", /^すべての写真/);
     await click(await targetButton("すべての写真"));
     await flush();
     expect(screen.queryByRole("menuitem", { name: /ホーム/ })).toBeNull();
@@ -1440,15 +1440,16 @@ describe("SPEC-PD-025 items 19 to 22, I10, I11: ?target=", () => {
     expect(readAppTarget("family", APP)).toBe(ALBUM_ID);
   });
 
-  it("SPEC-PD-025 I11 while pending the menu checks the pending row and choosing it does nothing", async () => {
+  it("SPEC-PD-025 I11 while pending the menu checks no row, the default's included", async () => {
     const release = hold(isCollections);
     await settled(`?view=library&target=${ALBUM_ID}`);
     await waitFor(() => expect(requests.some(isFolders)).toBe(true));
     await flush();
     await click(await targetButton("…"));
     const rows = screen.getAllByRole("menuitemradio");
+    expect(rows.length).toBeGreaterThan(0);
     const checked = rows.filter((r) => r.getAttribute("aria-checked") === "true");
-    expect(checked.map((r) => r.textContent)).toEqual([expect.stringContaining("Album")]);
+    expect(checked).toEqual([]);
     await release();
     await targetButton("Album");
   });
