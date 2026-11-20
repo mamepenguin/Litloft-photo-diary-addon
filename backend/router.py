@@ -244,6 +244,25 @@ def _no_target_parameters(request: Request) -> None:
         )
 
 
+def _library_tag_parameters(request: Request) -> list[str]:
+    if (_TARGET_PARAMETERS - {"tag"}).intersection(request.query_params):
+        raise HTTPException(
+            status_code=422, detail="A member set takes no target query parameter"
+        )
+    tags = request.query_params.getlist("tag")
+    if any(not tag for tag in tags):
+        raise HTTPException(status_code=422, detail="tag must not be empty")
+    return tags
+
+
+def _tagged(db: Session, drive: str, query, tags: list[str]):
+    """Narrow a member set by the same tag predicate the listing's GET applies."""
+    if not tags:
+        return query
+    listing, _ = filtered_drive_files(db, drive, tag=tags, type=["image"])
+    return query.where(File.id.in_(listing.with_entities(File.id)))
+
+
 def _count(db: Session, query) -> int:
     return db.scalar(select(func.count()).select_from(query.subquery())) or 0
 
@@ -641,12 +660,12 @@ def library_shelves_post(
     shelf_limit: int = Query(12, ge=1, le=50),
     offset: int = Query(0, ge=0),
     drive: str = Depends(_drive_scope),
-    _members: None = Depends(_no_target_parameters),
+    tags: list[str] = Depends(_library_tag_parameters),
     db: Session = Depends(get_db),
 ):
     return _shelves(
         db,
-        _photo_query(db, drive, None, body.file_ids),
+        _tagged(db, drive, _photo_query(db, drive, None, body.file_ids), tags),
         drive,
         by,
         sort,
@@ -728,12 +747,12 @@ def library_shelf_post(
     limit: int = Query(40, ge=1, le=100),
     offset: int = Query(0, ge=0),
     drive: str = Depends(_drive_scope),
-    _members: None = Depends(_no_target_parameters),
+    tags: list[str] = Depends(_library_tag_parameters),
     db: Session = Depends(get_db),
 ):
     return _shelf(
         db,
-        _photo_query(db, drive, None, body.file_ids),
+        _tagged(db, drive, _photo_query(db, drive, None, body.file_ids), tags),
         drive,
         by,
         key,
