@@ -82,8 +82,10 @@ the user), with the wording 並び順 / Sort By.
    the core's `GroupMenu` (label 分類 / Group By, `LayoutList` icon) then `SortMenu`
    (label 並び順 / Sort By, `ArrowDownUp` icon), with Photo Diary's option labels: 撮影月 /
    Month taken, タグ / Tag, コレクション / Collection, フォルダ / Folder, なし / None; 新しい順
-   / Newest first, 古い順 / Oldest first. While the Target is not known, the face shows
-   what it shows today while the look-up runs and no control row. The shelf page's sort
+   / Newest first, 古い順 / Oldest first. While the Target is not known (the look-up runs
+   or a `?target=` is pending), the face draws its loading shelves and no control row; the
+   row appears once the Target is known, so no choice can be written to a Target about to
+   be replaced. Today the row is drawn during the look-up too (section 7). The shelf page's sort
    menu stays where and as it is, with its label 並び順 / Sort By. `LibraryControls.tsx`'s
    classification menu and the message only it used (`photoDiary.classification`) are
    removed; `photoDiary.sort.label` is replaced by the core's `appView.sortBy`.
@@ -108,7 +110,12 @@ the user), with the wording 並び順 / Sort By.
    come in capture order for the sort, undated photos after every dated one in both sorts
    (`library.md` I4). Its loaded depth and scroll are restored on Back as the shelves' are
    (3). It has no See all. The control row stays above the grid. With no photo and no tag
-   chosen, its body is the shelves' existing empty state (`noPhotos`).
+   chosen, its body is the shelves' existing empty state (`noPhotos`). It draws as the
+   shelf page's grid draws today: a skeleton grid while its first page loads; the
+   Library's `RetryButton` under the control row when its first page fails (as the shelves'
+   first load); the shelf page's later-page failure with its retry when a later page fails;
+   and a failed re-read after a write keeps what is drawn with Retry above it
+   (`library.md` I13).
 7. *Backend.* `/library/shelves` and `/library/shelf` (`GET` and `POST`) accept `by=all`,
    each with its own branch (never the collection or folder path).
    `/library/shelf?by=all` takes only `key=all` (any other key 422); its `total` is the
@@ -164,8 +171,16 @@ the user), with the wording 並び順 / Sort By.
 14. *Target choice.* On the main page a Target choice removes `tag` from the URL in the
     same replace the page already makes, or in a replace of its own when it makes none,
     with no history entry, and the Library tags become empty. On the shelf page a Target
-    choice removes `tag` from its URL by a replace with no history entry. Re-choosing the
-    Target in force, a fallback, a member evaluation and a 分類 or 並び順 choice keep it.
+    choice removes `tag` from its URL by a replace with no history entry. From the Target
+    choice on, the chosen tags are taken as empty until the URL reflects the replace, so no
+    request (Library, なし, shelf page, tag-counts) carries a tag chosen before it.
+    Re-choosing the Target in force, a fallback, a member evaluation and a 分類 or 並び順
+    choice keep it. Back to a history entry made before a Target choice shows that entry's
+    URL: its `tag` values are the chosen tags under the Target in force (decided by the
+    user, as Clips), and a tag no photo of that Target carries gives the filtered empty
+    state.
+    The in-place start-over (a URL with no query reached while the page stays mounted)
+    empties the Library tags and writes `?view=library` with no `tag`.
 15. *Changing tags.* A tag toggle or a clear is handled as a classification change is in
     `library.md` I8: from it on, no shelf, photo or title of the previous tags is on screen,
     also while the new answer loads, after it fails and when an earlier answer arrives
@@ -176,6 +191,8 @@ the user), with the wording 並び順 / Sort By.
 17. *Count.* The main page's header count stays the Target's total and ignores the filter,
     as in the core's apps (SPEC-CORE-147). The shelf page's header count is the shelf
     `total` it already reads, which is under the chosen tags (decided by the user).
+    A failed request under chosen tags (Library shelves, なし, shelf page) draws the same
+    failed state with retry as without tags.
 
 **SPEC-PD-025 (Home shortcuts).**
 
@@ -195,7 +212,11 @@ the user), with the wording 並び順 / Sort By.
     saved Target writes nothing and is not a Target choice. Otherwise the id is ignored:
     `default`, an empty value, an id not in the list, an unusable Smart Collection, or the
     list failing to load; the saved Target stays and nothing is written. The id is never
-    sent to a backend.
+    sent to a backend. A pending id is resolved by the list of its own kind only: a Smart
+    Collection id by the Smart Collection list, a `collection:<id>` by the collection list;
+    the other list neither holds nor resolves it. While an id is pending the saved Target is
+    neither looked up for use nor evaluated, so a mount still evaluates one member Target
+    once (`target-members.md` I9), the one in force after the id is resolved.
 21. *URL.* When the id is applied or ignored, `target` is removed from the URL by a replace
     with no history entry, keeping every other parameter; a Target choice's `tag` removal
     (14) is part of the same replace. A URL whose only parameter is `target` is a fresh
@@ -234,9 +255,11 @@ the user), with the wording 並び順 / Sort By.
   another choice. Not allowed: set → unset (nothing removes an entry), and any write other
   than a menu choice for the Target in force.
 - Chosen tags: exactly the URL's; there is no other copy except the Library tags the
-  Library tab link carries in this mount. A reload keeps them; opening another drive's page
-  does not carry them. Not allowed: a tag reaching a Calendar or Map URL or request; a tag
-  surviving a Target choice.
+  Library tab link carries in this mount. A reload keeps them; Back to an entry made before
+  a Target choice brings that entry's tags under the Target in force; opening another
+  drive's page does not carry them. Not allowed: a tag reaching a Calendar or Map URL or
+  request; a request after a Target choice carrying a tag chosen before it; the Library
+  tab link carrying tags after a Target choice or an in-place start-over.
 - `?target=` per page load: **pending** → **applied** or **ignored**; a pending id is
   dropped by a menu choice or a navigation (22). Not allowed: an ignored id applied later;
   a pending id applied after a navigation or a menu choice; a request sent while pending.
@@ -271,6 +294,8 @@ predicate the `GET` routes use. `tag-counts` validates the drive as the core doe
   again (as Video, Reading and Clips after SPEC-CORE-145).
 - `library.md`'s per-drive view (I10) becomes per Target (Revises).
 - A load with only `?target=` is a fresh start, like a load with no query.
+- The Library's control row is no longer drawn while the Target is looked up; it appears
+  when the look-up ends (item 1).
 - The Calendar and the Map are unchanged; their URLs never carry `tag`.
 - `tests/test_target_members.py`'s table of target query parameters answered 422 on every
   `POST` route keeps every row except `tag` on `POST /library/shelves` and
@@ -299,6 +324,18 @@ As in 2. No new log line. The filtered empty title is new text in Photo Diary's 
   `target-members.md` section 10).
 - One tag-counts request per menu open and one per toggle while it is open.
 
+### Project-specific questions (`docs/process/PROJECT.md`)
+
+- Migration: none; no table or column is added. The view moves to a new localStorage key;
+  the old keys are only read.
+- WebSocket events: none emitted or consumed.
+- Internal API: not used or changed. Tag counts come from the core's public `tag-counts`
+  route, as Video, Reading and Clips use it.
+- Addon boundary: no core code changes. The frontend imports the core parts named under
+  Touch points, all on the documented surface (SPEC-CORE-145 to 148, 154).
+- i18n: addon messages, plus the core's `appView` and `appFilters` messages the core parts
+  render.
+
 ## Touch points
 
 - `backend/router.py` (`ShelfBy` gains `all` with its own branch in the shelves and shelf
@@ -318,8 +355,10 @@ As in 2. No new log line. The filtered empty title is new text in Photo Diary's 
   fresh-start test, `homeEntry`), `frontend/useTarget.ts` (applying an id, pending),
   `frontend/api.ts` (`tag` on the library requests), `frontend/useLibraryPages.ts`,
   `frontend/usePagedPhotos.ts`, `frontend/messages/{ja,en}.json`, and their tests
-- `e2e/` (the Library control row at 1440, 1280, 1024 and 390px in ja and en; the page
-  fixture if rebuilt)
+- `e2e/pageSupport.ts` (stubs for `tag-counts`, `tag-counts/query`, `home-shortcuts` and
+  `by=all`), `e2e/fixture/shelf/entry.tsx` and the page fixture (rebuilt),
+  `e2e/library.spec.ts` (it drives the old 分類 / 並べ替え menus), and a layout spec for
+  the Library control row at 1440, 1280, 1024 and 390px in ja and en
 - `README.md`, `docs/specs/INDEX.md` (also SPEC-PD-018 to 020 set `implemented`: the
   Library merged in #11)
 - Core names used: `LibraryControlRow`, `GroupMenu`, `SortMenu`
@@ -339,15 +378,17 @@ Target choice, fallback, restore, `?target=` or shelf page sort change writes th
 
 I2. The view shown is the Target in force's stored value, else (the `default` Target only)
 the old per-drive value, else 撮影月 / 新しい順; after choosing view A on Target X and B on
-Y, switching to X shows A and back to Y shows B; from a Target choice on no Library
-request goes out with another Target's view; and a Back restore applies only under the
-same Target, view and chosen tags.
+Y, switching to X shows A and back to Y shows B; and from a Target choice on no Library
+request goes out with another Target's view. While the Target is not known the Library
+draws no control row.
 
 I3. Under any Target and chosen tags, the なし grid over all its pages holds every photo
 the Library's `month` shelves hold for the same conditions, each once, dated photos in
 capture order for the sort then undated photos; `/library/shelf?by=all&key=all`'s `total`
-equals the sum of those shelves' counts; any other key with `by=all` answers 422; and the
-shelf page treats a `by=all` URL as an invalid link.
+equals the sum of those shelves' counts; any other key with `by=all` answers 422;
+`/library/shelves?by=all` answers exactly one shelf `{key: "all", label: ""}` with that
+count, or none when it is 0, and never runs another classification's filter; and the shelf
+page treats a `by=all` URL as an invalid link.
 
 I4. With tags T chosen and the Target ready and not empty, every Library request, every See
 all link, the shelf page's request and its back link carry all of T, and every photo shown
@@ -357,8 +398,11 @@ no request carries T.
 I5. A tag toggle, a clear and a Target choice (on the main page and on the shelf page)
 change the URL by replace with no history entry; a Target choice leaves no `tag`;
 re-choosing the Target in force, a fallback, a member evaluation and a 分類 or 並び順
-choice leave `tag` as it was; a reload keeps it; Library → Calendar or Map → Library keeps
-the Library tags and sends no request when nothing was written.
+choice leave `tag` as it was; no request after a Target choice carries a tag chosen
+before it; a reload keeps it; Back to an entry made before a Target choice applies that
+entry's `tag` under the Target in force; Library → Calendar or Map → Library keeps the
+Library tags and sends no request when nothing was written; after a Target choice or an
+in-place start-over the Library tab link carries no `tag`.
 
 I6. `POST /library/shelves` and `POST /library/shelf` with non-empty `tag` values answer what
 the `GET` answers for a collection holding exactly the posted ids plus that `tag`; an empty
@@ -383,7 +427,9 @@ header count is the Target's total whatever the tags, and the shelf page's is it
 I10. The main page with `?target=<id>` sends no photo, count, shelf or tag-counts request,
 the default Target's included, until the id is applied or ignored; an applied id other
 than the saved Target writes Photo Diary's Target key for that drive and no other
-localStorage key; an ignored id or the saved Target's writes nothing; afterwards the URL
+localStorage key; an ignored id or the saved Target's writes nothing, and an ignored id is
+never applied later (a list retry applies the saved Target); a pending id is resolved only
+by the list of its own kind; afterwards the URL
 has no `target`, with no history entry added, and a URL that held only `target` is
 `?view=library` with the saved state cleared.
 
@@ -401,8 +447,18 @@ two view menus share the second row at equal widths (within 1px); from 640px up 
 a 20px gap, then the view menus; at 1440, 1280, 1024 and 390px in ja and en nothing scrolls
 horizontally, measured in a real browser.
 
+I14. The Library's 分類 menu offers 撮影月, タグ, コレクション, フォルダ and なし (en Month
+taken, Tag, Collection, Folder, None) under the label 分類 / Group By, its 並び順 menu
+新しい順 and 古い順 under 並び順 / Sort By, and the shelf page's sort menu is labelled 並び順
+/ Sort By; no Photo Diary screen shows 並べ替え.
+
 ## Revises
 
+SPEC-PD-016 I6. The default target sends no target parameter, except the Library's chosen tags as `tag` on the Library routes, and with no tag chosen gives the same counts, lists and pins as before that change.
+SPEC-PD-016 I11. The backend answers 422 to `none=true` sent with any target parameter, and to a `POST` carrying any target query parameter except non-empty `tag` values on `POST /library/shelves` and `POST /library/shelf`; treats `none=false` as absent on a `GET`; and answers 400, not 500 or an empty result, to a target parameter the core cannot normalise.
+SPEC-PD-021 I7. Under the default target, a listing-parameter Smart Collection and an empty target, every photo request is exactly what it was before that change, except that the Library routes carry the Library's chosen tags as `tag` when the target is not empty.
+SPEC-PD-018 I1. Under any target, classification, sort and chosen tags, every photo the target selects that carries every chosen tag is in at least one shelf; across `month` shelves and across `folder` shelves each such photo is in exactly one; a shelf's `count` equals `/library/shelf`'s `total` for the same target, chosen tags, `by` and key, also for a folder whose stored name is NFD and for the root folder's `key=`; and a shelf's `file_ids` equal the first `per_shelf` ids of `/library/shelf` with the same sort.
+SPEC-PD-018 I2. Under any target with no tag chosen, a `month` shelf's count equals that month's count in `/calendar/months`, and the `undated` shelf's count equals `undated_count`.
 SPEC-PD-018 I7. A load with no query, or whose only parameter is `target`, shows the Library and leaves the URL at `?view=library` with no added history entry; `?view=calendar`, and a query with `month`, `date` or `undated` and no `view`, show the calendar; every URL the calendar produces carries `view=calendar` and no `tag`; and no hidden face changes the URL.
 SPEC-PD-018 I9. Going back from a photo opened in the Library or on the shelf page, reloading `?view=library`, and the shelf page's back link restore the loaded depth and scroll position left there once the target is ready (after a retry too; never while a member target has failed or is too large), never on another drive and never under another target, another classification or sort, or other chosen tags.
 SPEC-PD-018 I10. The classification and sort chosen for a Target on a drive are in force for that Target on that drive's next load and not for another Target or drive; a sort changed on the shelf page changes neither.
