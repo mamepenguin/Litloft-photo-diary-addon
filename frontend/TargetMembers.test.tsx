@@ -1056,7 +1056,7 @@ describe("SPEC-PD-021: the shelf page under a member target", () => {
     await openShelf("?by=month&key=2026-07");
     await finish({ status: "failed" });
     await screen.findByText("読み込めませんでした");
-    await screen.findByRole("button", { name: "並べ替え: 新しい順" });
+    await screen.findByRole("button", { name: "並び順: 新しい順" });
     expect(screen.getByRole("link", { name: "フォトダイアリー" })).toBeInTheDocument();
     expect(photoReads()).toEqual([]);
     noCount();
@@ -1081,7 +1081,7 @@ describe("SPEC-PD-021: the shelf page under a member target", () => {
     await finish({ status: "tooLarge" });
     await screen.findByText("この対象は使えません");
     expect(screen.queryByRole("button", { name: "再試行" })).toBeNull();
-    await screen.findByRole("button", { name: "並べ替え: 新しい順" });
+    await screen.findByRole("button", { name: "並び順: 新しい順" });
     expect(photoReads()).toEqual([]);
     expect(saved()).toBe(BEACH.id);
   });
