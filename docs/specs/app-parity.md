@@ -4,7 +4,7 @@ SPEC-ID: SPEC-PD-023
 SPEC-ID: SPEC-PD-024
 SPEC-ID: SPEC-PD-025
 
-Approval: sha256:2f73edc2c0e5234338437d733277c8e165bc5fa5dc83bae833b9d3b8cba506d6 Yuichi Senga 2026-11-20
+Approval:
 
 ## Summary
 
@@ -203,8 +203,10 @@ the user), with the wording 並び順 / Sort By.
 19. *Opening.* The main page, on any view, reads `?target=<id>` once, on its first render.
     From then until the id is applied or ignored the id is **pending**: no photo, count,
     shelf or tag-counts request goes out, the default Target's included; each face shows
-    what it shows while the look-up runs; the Target control shows `…`, the menu checks the
-    pending id's row, and choosing that row does nothing (as SPEC-CORE-154).
+    what it shows while the look-up runs; the Target control shows `…` and the menu checks no row, the default's included.
+    The pending id's own row is never drawn while it is pending: it comes from its list,
+    and that list's arrival resolves the id (SPEC-CORE-154's checked pending row has no
+    state in which it shows here).
 20. *Resolve.* The id is applied when it names a Smart Collection in the loaded list that
     `isUsable` accepts, or `collection:<id>` of a collection in the loaded list. Applying an
     id other than the saved Target is a Target choice (`choose(id)`): it writes Photo
@@ -434,8 +436,8 @@ has no `target`, with no history entry added, and a URL that held only `target` 
 `?view=library` with the saved state cleared.
 
 I11. A pending `?target=` is dropped unwritten by choosing another row or a navigation, and
-the page's own replaces do not drop it; while pending, the menu checks the pending row and
-choosing it does nothing; the shelf page leaves `target` in its URL and behaves as without
+the page's own replaces do not drop it; while pending, the menu checks no row, the default's
+included; the shelf page leaves `target` in its URL and behaves as without
 it.
 
 I12. The main page and the shelf page pass `homeEntry: "photo_diary"` while the Target is
@@ -465,7 +467,7 @@ SPEC-PD-018 I10. The classification and sort chosen for a Target on a drive are 
 SPEC-PD-021 I1. The `POST` photo routes answer exactly what the `GET` routes answer for the same other parameters over the photo set of the drive's active images whose id is listed (`file_ids: []` selects no photo, never the whole drive); they answer 422 to any target query parameter except non-empty `tag` values on `POST /library/shelves` and `POST /library/shelf`, a missing or invalid `file_ids`, an empty string or more than 10,000 entries; and the `GET` routes answer exactly as before, `by=all` added.
 SPEC-PD-021 I2. Under a member target whose kinds hold `image`, every photo request after ready is a `POST` carrying the evaluated ids, an empty list included, and no target query parameter other than the Library's chosen tags as `tag` on the two Library routes; a member target whose kinds hold no image sends `none=true` alone and evaluates nothing.
 SPEC-PD-022 I5. Under a collection target every photo request carries `collection` = that collection's name, and no other target query parameter except the Library's chosen tags as `tag` on the Library routes, through the `GET` routes, so the page shows exactly the collection's active images (under those tags on the Library); a `collection:<id>` not in the loaded list, or a failed collection list, gives the default target without deleting the saved id; while a saved `collection:<id>` is looked up no photo request goes out.
-SPEC-PD-016 I16. The Target control's text and the menu's checked row always name the target in force: すべての写真 for the default and for every fallback of item 4, the Smart Collection's or collection's name otherwise (a member target's name also while it evaluates, after a failure and when too large), `…` only while the look-up runs or a `?target=` is pending, when the checked row is the pending id's.
+SPEC-PD-016 I16. The Target control's text and the menu's checked row always name the target in force: すべての写真 for the default and for every fallback of item 4, the Smart Collection's or collection's name otherwise (a member target's name also while it evaluates, after a failure and when too large), `…` only while the look-up runs or a `?target=` is pending, when no row is checked.
 
 ## Checked, no action
 
