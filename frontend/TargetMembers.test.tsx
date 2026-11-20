@@ -722,6 +722,20 @@ describe("SPEC-PD-021 item 7: a failed evaluation", () => {
     await waitFor(() => expect(mapModule.createPhotoMap).toHaveBeenCalled());
   });
 
+  it("SPEC-PD-021 I3 a map drawn before the failure is drawn again on a new stage after retry", async () => {
+    await settled("?view=map");
+    await waitFor(() => expect(mapModule.createPhotoMap).toHaveBeenCalledTimes(1));
+    await choose("すべての写真", "Beach");
+    await finish({ status: "failed" });
+    await screen.findByText("読み込めませんでした");
+    await click(screen.getByRole("button", { name: "再試行" }));
+    await finish(READY);
+    await waitFor(() => expect(mapModule.createPhotoMap).toHaveBeenCalledTimes(2));
+    const [host, options] = vi.mocked(mapModule.createPhotoMap).mock.calls[1] as [HTMLElement, any];
+    expect(host.isConnected).toBe(true);
+    expect(JSON.stringify(options.points)).toContain("m0");
+  });
+
   it("SPEC-PD-021 I3 the Library shows its first-load retry", async () => {
     writeAppTarget("family", APP, BEACH.id);
     await settled("?view=library");
@@ -765,6 +779,19 @@ describe("SPEC-PD-021 item 7: a member set too large", () => {
     await choose("Beach", "Trip");
     await day("9月2日 2枚");
     expect(screen.queryByText("この対象は使えません")).toBeNull();
+  });
+
+  it("SPEC-PD-021 a map drawn before a too-large target is drawn again on a new stage for the next target", async () => {
+    await settled("?view=map");
+    await waitFor(() => expect(mapModule.createPhotoMap).toHaveBeenCalledTimes(1));
+    await choose("すべての写真", "Beach");
+    await finish({ status: "tooLarge" });
+    await screen.findByText("この対象は使えません");
+    await choose("Beach", "Trip");
+    await waitFor(() => expect(mapModule.createPhotoMap).toHaveBeenCalledTimes(2));
+    const [host, options] = vi.mocked(mapModule.createPhotoMap).mock.calls[1] as [HTMLElement, any];
+    expect(host.isConnected).toBe(true);
+    expect(JSON.stringify(options.points)).toContain("t0");
   });
 });
 

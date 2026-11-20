@@ -169,6 +169,15 @@ export function MapView({
     }
   }, [targetKey]);
 
+  // A failed or too-large target unmounts the stage, so a handle kept here
+  // would draw into a detached node once a target is ready again.
+  useEffect(() => {
+    if (!targetFailed && !targetTooLarge) return;
+    if (!handle.current) return;
+    dropMap();
+    setPhase("loading");
+  }, [targetFailed, targetTooLarge, dropMap]);
+
   useEffect(() => {
     if (!active || !ready || unavailable.current) return;
     const mine = ++request.current;
