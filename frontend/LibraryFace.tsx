@@ -202,7 +202,7 @@ export function LibraryFace({
         empty={empty}
         refreshToken={refreshToken}
         restore={saved}
-        onRefresh={refresh}
+        onRefresh={wrote}
         onDepth={onDepth}
         onRestored={onRestoredOnce}
         onNotAvailable={onNotAvailable}

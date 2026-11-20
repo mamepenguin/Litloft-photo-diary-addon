@@ -1231,6 +1231,30 @@ describe("SPEC-PD-019 item 5: a write on the Library", () => {
     expect(photoReads()).toHaveLength(reads + 1);
   });
 
+  it("SPEC-PD-019 I14 SPEC-PD-023 item 6 a write on the なし grid makes the calendar's open day list read again once", async () => {
+    writeTargetView(APP, "family", "default", { group: "all" });
+    answer(
+      (r) => r.path === `${BASE}/library/shelf` && r.query.get("by") === "all",
+      () => json({ file_ids: ids("all", 3), total: 3, label: "" }),
+      false,
+    );
+    await settled("?view=library");
+    await waitFor(() => expect(visibleGrids()).toHaveLength(1));
+    await openDayList();
+    await click(tab("ライブラリ"));
+    await flush();
+    const reads = photoReads().length;
+    h.missing.add("d2026-10-03-0");
+    await refreshShownGrid();
+    await flush();
+    expect(photoReads()).toHaveLength(reads);
+    await click(tab("カレンダー"));
+    await waitFor(() => expect(photoReads()).toHaveLength(reads + 1));
+    await waitFor(() =>
+      expect(within(visibleGrids()[0]).queryAllByTestId("file")).toHaveLength(4),
+    );
+  });
+
   it("SPEC-PD-019 I14 a write on the Library makes the map's point list read again once, and a later return with nothing written does not", async () => {
     const listReads = () =>
       vi
