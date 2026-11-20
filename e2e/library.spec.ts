@@ -62,6 +62,22 @@ test.describe("SPEC-PD-019 9.4: the controls row", () => {
     await noHorizontalScroll(page);
   });
 
+  test.describe("on a touch screen", () => {
+    // The core's menus take their 44px height from `pointer: coarse`, which a
+    // phone reports; a desktop pointer at 375px keeps the compact height.
+    test.use({ hasTouch: true, isMobile: true });
+
+    test("SPEC-PD-019 at 375 px the tag, classification and sort buttons are 44 px tall", async ({ page }) => {
+      await page.setViewportSize({ width: 375, height: 800 });
+      await open(page, "?view=library");
+      for (const name of ["タグ: 指定なし", "分類: 撮影月", "並び順: 新しい順"]) {
+        const button = page.getByRole("button", { name, exact: true });
+        await expect(button).toBeVisible();
+        expect((await box(page, button)).height).toBeGreaterThanOrEqual(44);
+      }
+    });
+  });
+
   for (const width of [640, 768, 1280]) {
     test(`SPEC-PD-019 at ${width} px the classification shows 分類 and its value`, async ({ page }) => {
       await page.setViewportSize({ width, height: 800 });
