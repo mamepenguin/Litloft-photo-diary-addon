@@ -1244,9 +1244,12 @@ describe("SPEC-PD-019 item 5: a write on the Library", () => {
     await click(tab("ライブラリ"));
     await flush();
     const reads = photoReads().length;
+    const allReads = () =>
+      requests.filter((r) => r.path === `${BASE}/library/shelf` && r.query.get("by") === "all").length;
+    const grid = allReads();
     h.missing.add("d2026-10-03-0");
     await refreshShownGrid();
-    await flush();
+    await waitFor(() => expect(allReads()).toBe(grid + 1));
     expect(photoReads()).toHaveLength(reads);
     await click(tab("カレンダー"));
     await waitFor(() => expect(photoReads()).toHaveLength(reads + 1));
