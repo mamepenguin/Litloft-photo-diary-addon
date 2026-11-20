@@ -202,7 +202,8 @@ export function LibraryFace({
         empty={empty}
         refreshToken={refreshToken}
         restore={saved}
-        onRefresh={wrote}
+        onRefresh={refresh}
+        onWrite={wrote}
         onDepth={onDepth}
         onRestored={onRestoredOnce}
         onNotAvailable={onNotAvailable}
@@ -374,6 +375,7 @@ function AllPhotos({
   refreshToken,
   restore,
   onRefresh,
+  onWrite,
   onDepth,
   onRestored,
   onNotAvailable,
@@ -387,6 +389,7 @@ function AllPhotos({
   refreshToken: number;
   restore: Restore | null;
   onRefresh: () => void;
+  onWrite: () => void;
   onDepth: (pages: number) => void;
   onRestored: () => void;
   onNotAvailable: () => void;
@@ -447,7 +450,7 @@ function AllPhotos({
   return (
     <>
       {refreshFailed && <LoadError onRetry={onRefresh} />}
-      <FileGrid files={paged.files} moreMayFollow={paged.moreMayFollow} onRefresh={onRefresh} />
+      <FileGrid files={paged.files} moreMayFollow={paged.moreMayFollow} onRefresh={onWrite} />
       <div ref={sentinel} aria-hidden="true" className="h-px" />
       {paged.more === "loading" && (
         <div className="mt-8">

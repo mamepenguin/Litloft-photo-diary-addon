@@ -1203,6 +1203,35 @@ describe("SPEC-PD-019 item 5: a write on the calendar or the map", () => {
     await waitFor(() => expect(screen.queryByText("読み込めませんでした")).toBeNull());
     expect(seeAll()).toHaveLength(12);
   });
+
+  it("SPEC-PD-023 item 6 retrying a failed なし re-read counts no write, so the calendar does not read its list again", async () => {
+    writeTargetView(APP, "family", "default", { group: "all" });
+    answer(
+      (r) => r.path === `${BASE}/library/shelf` && r.query.get("by") === "all",
+      () => json({ file_ids: ids("all", 3), total: 3, label: "" }),
+      false,
+    );
+    await settled("?view=library");
+    await waitFor(() => expect(visibleGrids()).toHaveLength(1));
+    await openDayList();
+    await refreshShownGrid();
+    answer(
+      (r) => r.path === `${BASE}/library/shelf` && r.query.get("by") === "all",
+      () => json({ detail: "boom" }, 500),
+    );
+    await click(tab("ライブラリ"));
+    await screen.findByText("読み込めませんでした");
+    await click(tab("カレンダー"));
+    await flush();
+    await click(tab("ライブラリ"));
+    await flush();
+    const reads = photoReads().length;
+    await click(screen.getByRole("button", { name: "再試行" }));
+    await waitFor(() => expect(screen.queryByText("読み込めませんでした")).toBeNull());
+    await click(tab("カレンダー"));
+    await flush();
+    expect(photoReads()).toHaveLength(reads);
+  });
 });
 
 // ---------------------------------------------------------------- item 5: a write on the Library
