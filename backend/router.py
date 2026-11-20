@@ -250,8 +250,10 @@ def _count(db: Session, query) -> int:
 
 # ---------------------------------------------------------------- library
 
-ShelfBy = Literal["month", "tag", "collection", "folder"]
+ShelfBy = Literal["month", "tag", "collection", "folder", "all"]
 ShelfSort = Literal["newest", "oldest"]
+
+ALL = "all"
 
 UNDATED = "undated"
 NO_TAG = "no_tag"
@@ -551,6 +553,27 @@ def _shelves(
     shelf_limit: int,
     offset: int,
 ) -> ShelvesResponse:
+    if by == "all":
+        # One shelf whenever the conditions select a photo; its photos page
+        # through /library/shelf, not through the shelf list's offset.
+        count = _count(db, base)
+        if count == 0:
+            return ShelvesResponse(shelves=[], total_shelves=0)
+        return ShelvesResponse(
+            shelves=[
+                ShelfEntry(
+                    key=ALL,
+                    label="",
+                    count=count,
+                    file_ids=list(
+                        db.scalars(
+                            base.order_by(*_capture_order(sort)).limit(per_shelf)
+                        )
+                    ),
+                )
+            ],
+            total_shelves=1,
+        )
     labels: dict[str, str] = {}
     folder_paths: dict[str, list[str]] = {}
     if by == "month":
@@ -643,14 +666,21 @@ def _shelf(
     limit: int,
     offset: int,
 ) -> ShelfResponse:
-    if by != "folder" and not key:
-        raise HTTPException(status_code=422, detail="key is empty")
-    if by == "month" and key != UNDATED and not _MONTH_KEY.match(key):
-        raise HTTPException(status_code=422, detail="month key must be YYYY-MM or undated")
-    if by == "folder":
+    if by == "all":
+        if key != ALL:
+            raise HTTPException(status_code=422, detail="by=all takes only key=all")
+        query = base
+        label = ""
+    elif by == "folder":
         query = base.where(File.folder_path.in_(_folder_paths(db, base, key)))
         label = _folder_label(key)
     else:
+        if not key:
+            raise HTTPException(status_code=422, detail="key is empty")
+        if by == "month" and key != UNDATED and not _MONTH_KEY.match(key):
+            raise HTTPException(
+                status_code=422, detail="month key must be YYYY-MM or undated"
+            )
         query = base.where(_shelf_filter(by, key, drive))
         name = ""
         if by == "collection" and key != NO_COLLECTION:
