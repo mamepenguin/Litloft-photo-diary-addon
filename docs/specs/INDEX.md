@@ -12,6 +12,6 @@
 | SPEC-PD-020 | implemented | docs/specs/library.md | sha256:91a93dc7fa4ad1b3c1bc8d1a574ac03ebb146b658934a086e33febd9bc8bc18b |
 | SPEC-PD-021 | implemented | docs/specs/target-members.md | sha256:066b20a60daa681a4f5370c5c6fbde37be0be877575c7f2683264a12e656f366 |
 | SPEC-PD-022 | implemented | docs/specs/target-members.md | sha256:066b20a60daa681a4f5370c5c6fbde37be0be877575c7f2683264a12e656f366 |
-| SPEC-PD-023 | approved | docs/specs/app-parity.md | sha256:c5fa24046416441bf022b1fdc95e5368f1008702211930740093ff4ba8e45eb7 |
-| SPEC-PD-024 | approved | docs/specs/app-parity.md | sha256:c5fa24046416441bf022b1fdc95e5368f1008702211930740093ff4ba8e45eb7 |
-| SPEC-PD-025 | approved | docs/specs/app-parity.md | sha256:c5fa24046416441bf022b1fdc95e5368f1008702211930740093ff4ba8e45eb7 |
+| SPEC-PD-023 | implemented | docs/specs/app-parity.md | sha256:c5fa24046416441bf022b1fdc95e5368f1008702211930740093ff4ba8e45eb7 |
+| SPEC-PD-024 | implemented | docs/specs/app-parity.md | sha256:c5fa24046416441bf022b1fdc95e5368f1008702211930740093ff4ba8e45eb7 |
+| SPEC-PD-025 | implemented | docs/specs/app-parity.md | sha256:c5fa24046416441bf022b1fdc95e5368f1008702211930740093ff4ba8e45eb7 |
