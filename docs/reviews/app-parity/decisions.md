@@ -28,3 +28,7 @@ evidence: |
   Observation, core Target menu: in 3 of about 35 menu reads, all under the member Target 船の画像 (after Put on Home, after すべて見る, and a re-open on the shelf page), the menu read 0.8–1.5 s after opening showed no Home row and すべての写真 without its count; in the trial with timing recorded, the home-shortcuts GET had been sent and had not answered within 1.5 s. Every other open, including six repeats under the member Target on both pages, showed the row. The row and count are drawn by the core after its own GETs; recorded, not judged. The PUT from the menu answers 204 and Playwright then reports the request as net::ERR_ABORTED; server state was correct each time.
 pending: |
   Real phone and the home LAN (agent_cannot_verify). The too-large member drawing and the 50,000-photo timing (section 10) were not exercised here.
+
+## Section 10 measurement
+
+Measured once before merge by a throwaway script through the test client (no HTTP): 50,000 images in one drive, 45,000 dated over six years and 5,000 undated, 300 tags with `tag0` on 10,013 photos, 10,000 member ids; best of 3 after a warm-up. `GET /library/shelf?by=all&key=all` first page (limit 40): newest 193 ms, oldest 121 ms; with `tag=tag0`: 212 ms, 207 ms. `POST /library/shelf?by=all&key=all` with 10,000 ids: 181 ms, 135 ms; with `tag=tag0`: 214 ms, 242 ms. `GET /library/shelves?by=all`: 180 ms. Last page (`offset=49960`): 236 ms. Every one within the 1 s bound; each `total` was as seeded.
