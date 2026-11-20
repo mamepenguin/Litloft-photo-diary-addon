@@ -228,6 +228,8 @@ function route(r: Req, driveHeader: string | null): Response {
   if (r.path === `${BASE}/points`) return json({ points: lib.points });
   if (r.path === `${BASE}/map-config`) return json({ tile_url: "https://t.example.test/{z}/{x}/{y}.png", attribution: "" });
   if (r.path === "/api/addons/status") return json(h.installed.current ? { addons: { knowledge: {} }, slots: {} } : { addons: {}, slots: {} });
+  if (/^\/api\/drives\/[^/]+\/smart-folders$/.test(r.path)) return json([]);
+  if (/^\/api\/drives\/[^/]+\/collections$/.test(r.path)) return json([]);
 
   const policy = r.path.match(/^\/api\/drives\/[^/]+\/addon-policies$/);
   if (policy) return json({ addons: { knowledge: { default: true, features: { editor: editorPolicy } } } });

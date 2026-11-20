@@ -29,6 +29,19 @@ const corePackages = {
   },
 };
 
+// The core finds an addon's slots with a dynamic import over a template
+// literal. Vite expands that over the whole link tree, so this stands every
+// addon's slots in: the page's own slot provider is already a stand-in, and a
+// real one would pull each addon's components into the page bundle.
+const noSlots = join(here, "fixture/page/noSlots.ts");
+const stubAddonSlots = {
+  name: "stub-addon-slots",
+  enforce: "pre",
+  resolveId(source) {
+    return /(^|\/)addons\/[^/]+\/slots\.ts$/.test(source) ? noSlots : null;
+  },
+};
+
 export default async function buildFixture() {
   const require = createRequire(join(coreFrontend, "package.json"));
   const { build } = require("vite");
@@ -55,7 +68,7 @@ export default async function buildFixture() {
     root: here,
     configFile: false,
     logLevel: "warn",
-    plugins: [corePackages],
+    plugins: [corePackages, stubAddonSlots],
     esbuild: { jsx: "automatic" },
     define: { "process.env.NODE_ENV": '"production"' },
   };

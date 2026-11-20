@@ -77,6 +77,10 @@ function Session({ drive }: { drive: string }) {
   const target = useTarget(drive);
   const targetId = useRef(target.selectedId);
   targetId.current = target.selectedId;
+  // Leaving under a failed evaluation or a too-large set writes nothing, so the
+  // state the visit read is still there on the way back.
+  const noSave = useRef(false);
+  noSave.current = target.failed || target.tooLarge;
 
   const [by, setBy] = useState<Classification>(() => readClassification(drive));
   const [sort, setSort] = useState<Sort>(() => readSort(drive));
@@ -132,7 +136,12 @@ function Session({ drive }: { drive: string }) {
     let current = true;
     const changes = target.changes;
     const params = target.params;
-    (params ? fetchMonths(drive, params) : fetchMonths(drive)).then(
+    (target.fileIds !== null
+      ? fetchMonths(drive, params ?? undefined, target.fileIds)
+      : params
+        ? fetchMonths(drive, params)
+        : fetchMonths(drive)
+    ).then(
       (months) => {
         if (current) setCount({ changes, value: photoTotal(months) });
       },
@@ -143,7 +152,7 @@ function Session({ drive }: { drive: string }) {
     return () => {
       current = false;
     };
-  }, [drive, countsItself, countToken, target.ready, target.changes, target.params]);
+  }, [drive, countsItself, countToken, target.ready, target.changes, target.params, target.fileIds]);
 
   // A URL with no query is a fresh start however it was reached.
   const [initial] = useState(() => {
@@ -201,6 +210,7 @@ function Session({ drive }: { drive: string }) {
   );
 
   const flush = useCallback(() => {
+    if (noSave.current) return;
     const state: SavedState = {};
     if (saved.current.center) state.center = saved.current.center;
     if (saved.current.zoom !== undefined) state.zoom = saved.current.zoom;
@@ -423,8 +433,9 @@ function Session({ drive }: { drive: string }) {
           target={{
             drive,
             app: { addon: "photo_diary" },
-            name: target.lookingUp ? null : (target.folder?.name ?? t("allPhotos")),
+            name: target.lookingUp ? null : (target.name ?? t("allPhotos")),
             folders: target.folders,
+            collections: { list: target.collections, retry: target.retryCollections },
             selectedId: target.selectedId,
             currentCount: total,
             label: t("target"),
@@ -444,9 +455,13 @@ function Session({ drive }: { drive: string }) {
             key={epoch}
             drive={drive}
             target={target.params}
+            fileIds={target.fileIds}
             targetId={target.selectedId}
             targetKey={target.changes}
             ready={target.ready}
+            targetFailed={target.failed}
+            targetTooLarge={target.tooLarge}
+            onRetryTarget={target.retryTarget}
             active={url.view === "library"}
             writeToken={writes}
             onWrite={noteWrite}
@@ -472,9 +487,13 @@ function Session({ drive }: { drive: string }) {
             url={url.view === "library" ? calendarUrl.current : url}
             go={go}
             target={target.params}
+            fileIds={target.fileIds}
             targetId={target.selectedId}
             targetKey={target.changes}
             ready={target.ready}
+            targetFailed={target.failed}
+            targetTooLarge={target.tooLarge}
+            onRetryTarget={target.retryTarget}
             positionRef={calendarList}
             restore={calendarRestore.current}
             onRestored={calendarRestored}
@@ -493,9 +512,13 @@ function Session({ drive }: { drive: string }) {
             active={url.view === "map"}
             writeToken={writes}
             target={target.params}
+            fileIds={target.fileIds}
             targetId={target.selectedId}
             targetKey={target.changes}
             ready={target.ready}
+            targetFailed={target.failed}
+            targetTooLarge={target.tooLarge}
+            onRetryTarget={target.retryTarget}
             restore={mapRestore.current}
             positionRef={mapList}
             onView={setView}

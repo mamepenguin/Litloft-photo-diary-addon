@@ -37,6 +37,7 @@ from .schemas import (
     CalendarMonthsResponse,
     DayCount,
     MapConfig,
+    MemberFileIds,
     MonthCount,
     NoteResponse,
     PhotoIdsResponse,
@@ -198,25 +199,49 @@ def _photos(drive: str):
     )
 
 
-def _photo_query(db: Session, drive: str, target: _Target):
+def _photo_query(
+    db: Session,
+    drive: str,
+    target: _Target | None,
+    file_ids: list[str] | None = None,
+):
     query = _photos(drive)
-    if target.none:
-        return query.where(false())
-    if not target.given():
-        return query
-    listing, _ = filtered_drive_files(
-        db,
-        drive,
-        search=target.search,
-        favorite=target.favorite,
-        liked=target.liked,
-        tag=target.tag,
-        type=["image"],
-        folder=target.folder,
-        collection=target.collection,
-        size=target.size,
-    )
-    return query.where(File.id.in_(listing.with_entities(File.id)))
+    if target is not None:
+        if target.none:
+            return query.where(false())
+        if target.given():
+            listing, _ = filtered_drive_files(
+                db,
+                drive,
+                search=target.search,
+                favorite=target.favorite,
+                liked=target.liked,
+                tag=target.tag,
+                type=["image"],
+                folder=target.folder,
+                collection=target.collection,
+                size=target.size,
+            )
+            query = query.where(File.id.in_(listing.with_entities(File.id)))
+    # ``[]`` must select nothing: testing truthiness here would fall back to
+    # the whole drive.
+    if file_ids is not None:
+        query = query.where(File.id.in_(file_ids))
+    return query
+
+
+# A member set carries no target of its own, so the POST routes never declare
+# these: a declared one would be parsed as a target rather than refused.
+_TARGET_PARAMETERS = frozenset(
+    {"search", "tag", "folder", "collection", "size", "favorite", "liked", "none"}
+)
+
+
+def _no_target_parameters(request: Request) -> None:
+    if _TARGET_PARAMETERS.intersection(request.query_params):
+        raise HTTPException(
+            status_code=422, detail="A member set takes no target query parameter"
+        )
 
 
 def _count(db: Session, query) -> int:
@@ -516,18 +541,16 @@ def _folder_paths(db: Session, base, key: str) -> list[str]:
     return wanted
 
 
-@router.get("/library/shelves", response_model=ShelvesResponse)
-def library_shelves(
-    by: ShelfBy = Query(...),
-    sort: ShelfSort = Query("newest"),
-    per_shelf: int = Query(12, ge=1, le=20),
-    shelf_limit: int = Query(12, ge=1, le=50),
-    offset: int = Query(0, ge=0),
-    drive: str = Depends(_drive_scope),
-    target: _Target = Depends(_target),
-    db: Session = Depends(get_db),
-):
-    base = _photo_query(db, drive, target)
+def _shelves(
+    db: Session,
+    base,
+    drive: str,
+    by: str,
+    sort: str,
+    per_shelf: int,
+    shelf_limit: int,
+    offset: int,
+) -> ShelvesResponse:
     labels: dict[str, str] = {}
     folder_paths: dict[str, list[str]] = {}
     if by == "month":
@@ -563,22 +586,67 @@ def library_shelves(
     )
 
 
-@router.get("/library/shelf", response_model=ShelfResponse)
-def library_shelf(
+@router.get("/library/shelves", response_model=ShelvesResponse)
+def library_shelves(
     by: ShelfBy = Query(...),
-    key: str = Query(...),
     sort: ShelfSort = Query("newest"),
-    limit: int = Query(40, ge=1, le=100),
+    per_shelf: int = Query(12, ge=1, le=20),
+    shelf_limit: int = Query(12, ge=1, le=50),
     offset: int = Query(0, ge=0),
     drive: str = Depends(_drive_scope),
     target: _Target = Depends(_target),
     db: Session = Depends(get_db),
 ):
+    return _shelves(
+        db,
+        _photo_query(db, drive, target),
+        drive,
+        by,
+        sort,
+        per_shelf,
+        shelf_limit,
+        offset,
+    )
+
+
+@router.post("/library/shelves", response_model=ShelvesResponse)
+def library_shelves_post(
+    body: MemberFileIds,
+    by: ShelfBy = Query(...),
+    sort: ShelfSort = Query("newest"),
+    per_shelf: int = Query(12, ge=1, le=20),
+    shelf_limit: int = Query(12, ge=1, le=50),
+    offset: int = Query(0, ge=0),
+    drive: str = Depends(_drive_scope),
+    _members: None = Depends(_no_target_parameters),
+    db: Session = Depends(get_db),
+):
+    return _shelves(
+        db,
+        _photo_query(db, drive, None, body.file_ids),
+        drive,
+        by,
+        sort,
+        per_shelf,
+        shelf_limit,
+        offset,
+    )
+
+
+def _shelf(
+    db: Session,
+    base,
+    drive: str,
+    by: str,
+    key: str,
+    sort: str,
+    limit: int,
+    offset: int,
+) -> ShelfResponse:
     if by != "folder" and not key:
         raise HTTPException(status_code=422, detail="key is empty")
     if by == "month" and key != UNDATED and not _MONTH_KEY.match(key):
         raise HTTPException(status_code=422, detail="month key must be YYYY-MM or undated")
-    base = _photo_query(db, drive, target)
     if by == "folder":
         query = base.where(File.folder_path.in_(_folder_paths(db, base, key)))
         label = _folder_label(key)
@@ -596,6 +664,53 @@ def library_shelf(
         query.order_by(*_capture_order(sort)).limit(limit).offset(offset)
     ).all()
     return ShelfResponse(file_ids=list(ids), total=_count(db, query), label=label)
+
+
+@router.get("/library/shelf", response_model=ShelfResponse)
+def library_shelf(
+    by: ShelfBy = Query(...),
+    key: str = Query(...),
+    sort: ShelfSort = Query("newest"),
+    limit: int = Query(40, ge=1, le=100),
+    offset: int = Query(0, ge=0),
+    drive: str = Depends(_drive_scope),
+    target: _Target = Depends(_target),
+    db: Session = Depends(get_db),
+):
+    return _shelf(
+        db,
+        _photo_query(db, drive, target),
+        drive,
+        by,
+        key,
+        sort,
+        limit,
+        offset,
+    )
+
+
+@router.post("/library/shelf", response_model=ShelfResponse)
+def library_shelf_post(
+    body: MemberFileIds,
+    by: ShelfBy = Query(...),
+    key: str = Query(...),
+    sort: ShelfSort = Query("newest"),
+    limit: int = Query(40, ge=1, le=100),
+    offset: int = Query(0, ge=0),
+    drive: str = Depends(_drive_scope),
+    _members: None = Depends(_no_target_parameters),
+    db: Session = Depends(get_db),
+):
+    return _shelf(
+        db,
+        _photo_query(db, drive, None, body.file_ids),
+        drive,
+        by,
+        key,
+        sort,
+        limit,
+        offset,
+    )
 
 
 # GLOB is case-sensitive and LIKE is not, so `2026-11-01.MD` and a differently
@@ -625,39 +740,45 @@ def _note_dates(drive: str, glob_date: str = _DATE_GLOB):
     )
 
 
-@router.get("/calendar/months", response_model=CalendarMonthsResponse)
-def calendar_months(
-    drive: str = Depends(_drive_scope),
-    target: _Target = Depends(_target),
-    db: Session = Depends(get_db),
-):
-    query = _photo_query(db, drive, target)
+def _months(db: Session, base, drive: str) -> CalendarMonthsResponse:
     month = func.substr(_DAY, 1, 7)
     rows = db.execute(
-        query.with_only_columns(month, func.count()).where(_IS_DATED).group_by(month)
+        base.with_only_columns(month, func.count()).where(_IS_DATED).group_by(month)
     ).all()
     counts = {m: c for m, c in rows}
     for note_month in db.scalars(
         _note_dates(drive).with_only_columns(func.substr(_NOTE_DATE, 1, 7)).distinct()
     ):
         counts.setdefault(note_month, 0)
-    undated = _count(db, query.where(~_IS_DATED))
+    undated = _count(db, base.where(~_IS_DATED))
     return CalendarMonthsResponse(
         months=[MonthCount(month=m, count=counts[m]) for m in sorted(counts, reverse=True)],
         undated_count=undated,
     )
 
 
-@router.get("/calendar/days", response_model=CalendarDaysResponse)
-def calendar_days(
-    month: str = Query(pattern=_MONTH_PATTERN),
+@router.get("/calendar/months", response_model=CalendarMonthsResponse)
+def calendar_months(
     drive: str = Depends(_drive_scope),
     target: _Target = Depends(_target),
     db: Session = Depends(get_db),
 ):
+    return _months(db, _photo_query(db, drive, target), drive)
+
+
+@router.post("/calendar/months", response_model=CalendarMonthsResponse)
+def calendar_months_post(
+    body: MemberFileIds,
+    drive: str = Depends(_drive_scope),
+    _members: None = Depends(_no_target_parameters),
+    db: Session = Depends(get_db),
+):
+    return _months(db, _photo_query(db, drive, None, body.file_ids), drive)
+
+
+def _days(db: Session, base, drive: str, month: str) -> CalendarDaysResponse:
     rows = db.execute(
-        _photo_query(db, drive, target)
-        .with_only_columns(_DAY, func.count())
+        base.with_only_columns(_DAY, func.count())
         .where(_IS_DATED, func.substr(_DAY, 1, 7) == month)
         .group_by(_DAY)
     ).all()
@@ -669,6 +790,27 @@ def calendar_days(
             for d in sorted(counts.keys() | noted)
         ]
     )
+
+
+@router.get("/calendar/days", response_model=CalendarDaysResponse)
+def calendar_days(
+    month: str = Query(pattern=_MONTH_PATTERN),
+    drive: str = Depends(_drive_scope),
+    target: _Target = Depends(_target),
+    db: Session = Depends(get_db),
+):
+    return _days(db, _photo_query(db, drive, target), drive, month)
+
+
+@router.post("/calendar/days", response_model=CalendarDaysResponse)
+def calendar_days_post(
+    body: MemberFileIds,
+    month: str = Query(pattern=_MONTH_PATTERN),
+    drive: str = Depends(_drive_scope),
+    _members: None = Depends(_no_target_parameters),
+    db: Session = Depends(get_db),
+):
+    return _days(db, _photo_query(db, drive, None, body.file_ids), drive, month)
 
 
 def _real_date(value: str) -> str:
@@ -704,21 +846,19 @@ def note(
     return NoteResponse(state=state, file_id=file_id)
 
 
-@router.get("/photos", response_model=PhotoIdsResponse)
-def photos(
-    date: str | None = None,
-    undated: bool = False,
-    limit: int = Query(default=40, ge=1, le=100),
-    offset: int = Query(default=0, ge=0),
-    drive: str = Depends(_drive_scope),
-    target: _Target = Depends(_target),
-    db: Session = Depends(get_db),
-):
+def _photo_page(
+    db: Session,
+    base,
+    date: str | None,
+    undated: bool,
+    limit: int,
+    offset: int,
+) -> PhotoIdsResponse:
     if (date is None) == (not undated):
         raise HTTPException(
             status_code=422, detail="Give exactly one of date and undated=true"
         )
-    query = _photo_query(db, drive, target)
+    query = base
     if date is not None:
         query = query.where(_IS_DATED, _DAY == _real_date(date))
         order = _DATED_ORDER
@@ -729,15 +869,40 @@ def photos(
     return PhotoIdsResponse(file_ids=list(ids), total=_count(db, query))
 
 
-@router.get("/points", response_model=PointsResponse)
-def points(
+@router.get("/photos", response_model=PhotoIdsResponse)
+def photos(
+    date: str | None = None,
+    undated: bool = False,
+    limit: int = Query(default=40, ge=1, le=100),
+    offset: int = Query(default=0, ge=0),
     drive: str = Depends(_drive_scope),
     target: _Target = Depends(_target),
     db: Session = Depends(get_db),
 ):
+    return _photo_page(
+        db, _photo_query(db, drive, target), date, undated, limit, offset
+    )
+
+
+@router.post("/photos", response_model=PhotoIdsResponse)
+def photos_post(
+    body: MemberFileIds,
+    date: str | None = None,
+    undated: bool = False,
+    limit: int = Query(default=40, ge=1, le=100),
+    offset: int = Query(default=0, ge=0),
+    drive: str = Depends(_drive_scope),
+    _members: None = Depends(_no_target_parameters),
+    db: Session = Depends(get_db),
+):
+    return _photo_page(
+        db, _photo_query(db, drive, None, body.file_ids), date, undated, limit, offset
+    )
+
+
+def _points(db: Session, base) -> PointsResponse:
     rows = db.execute(
-        _photo_query(db, drive, target)
-        .with_only_columns(
+        base.with_only_columns(
             File.id,
             FileExif.gps_lat,
             FileExif.gps_lon,
@@ -754,6 +919,25 @@ def points(
     return PointsResponse(
         points=[Point(file_id=i, lat=la, lon=lo, taken_at=t) for i, la, lo, t in rows]
     )
+
+
+@router.get("/points", response_model=PointsResponse)
+def points(
+    drive: str = Depends(_drive_scope),
+    target: _Target = Depends(_target),
+    db: Session = Depends(get_db),
+):
+    return _points(db, _photo_query(db, drive, target))
+
+
+@router.post("/points", response_model=PointsResponse)
+def points_post(
+    body: MemberFileIds,
+    drive: str = Depends(_drive_scope),
+    _members: None = Depends(_no_target_parameters),
+    db: Session = Depends(get_db),
+):
+    return _points(db, _photo_query(db, drive, None, body.file_ids))
 
 
 @router.get("/map-config", response_model=MapConfig)

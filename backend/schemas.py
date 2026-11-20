@@ -1,6 +1,14 @@
-from typing import Literal
+from typing import Annotated, Literal
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field, StringConstraints
+
+
+class MemberFileIds(BaseModel):
+    # Not the core's FileIdsQuery: it is not on the documented surface for
+    # addons. The core's listing caps the same ids at 10,000.
+    file_ids: list[Annotated[str, StringConstraints(min_length=1)]] = Field(
+        max_length=10_000
+    )
 
 
 class MonthCount(BaseModel):

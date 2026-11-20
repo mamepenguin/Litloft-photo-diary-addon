@@ -16,38 +16,67 @@ const ids = (prefix: string, n: number) => Array.from({ length: n }, (_, i) => `
  */
 export async function serveApi(page: Page) {
   const json = (body: unknown) => ({ status: 200, contentType: "application/json", body: JSON.stringify(body) });
+  const postedIds = (route: { request: () => { postDataJSON: () => unknown } }): string[] | null => {
+    try {
+      const body = route.request().postDataJSON() as { file_ids?: unknown } | null;
+      return Array.isArray(body?.file_ids) && body.file_ids.every((id) => typeof id === "string")
+        ? body.file_ids
+        : null;
+    } catch {
+      return null;
+    }
+  };
+  const paged = <T,>(all: T[], search: URLSearchParams) => {
+    const offset = Number(search.get("offset") ?? 0);
+    const limit = Number(search.get("limit") ?? 40);
+    return all.slice(offset, offset + limit);
+  };
 
-  await page.route("**/api/addons/photo_diary/calendar/months*", (route) =>
-    route.fulfill(
+  await page.route("**/api/addons/photo_diary/calendar/months*", (route) => {
+    const members = route.request().method() === "POST" ? postedIds(route) : null;
+    if (members !== null && members.length === 0) return route.fulfill(json({ months: [], undated_count: 0 }));
+    return route.fulfill(
       json({
         months: MONTHS.map((month, i) => ({ month, count: i === 0 ? BIG_DAY_COUNT : 5 })),
         undated_count: 3,
       }),
-    ),
-  );
+    );
+  });
   await page.route("**/api/addons/photo_diary/calendar/days*", (route) => {
+    const members = route.request().method() === "POST" ? postedIds(route) : null;
+    if (members !== null && members.length === 0) return route.fulfill(json({ days: [] }));
     const month = new URL(route.request().url()).searchParams.get("month");
     route.fulfill(json({ days: month === "2026-09" ? [{ date: BIG_DAY, count: BIG_DAY_COUNT }] : [] }));
   });
   await page.route("**/api/addons/photo_diary/photos*", (route) => {
+    const members = route.request().method() === "POST" ? postedIds(route) : null;
+    if (members !== null) {
+      const page = paged(members, new URL(route.request().url()).searchParams);
+      return route.fulfill(json({ file_ids: page, total: members.length }));
+    }
     const q = new URL(route.request().url()).searchParams;
     const all = q.get("undated") ? ids("u", 3) : ids("d", BIG_DAY_COUNT);
-    const offset = Number(q.get("offset") ?? 0);
-    const limit = Number(q.get("limit") ?? 40);
-    route.fulfill(json({ file_ids: all.slice(offset, offset + limit), total: all.length }));
+    route.fulfill(json({ file_ids: paged(all, q), total: all.length }));
   });
-  await page.route("**/api/addons/photo_diary/points*", (route) =>
-    route.fulfill(
+  await page.route("**/api/addons/photo_diary/points*", (route) => {
+    const members = route.request().method() === "POST" ? postedIds(route) : null;
+    const all = members ?? ids("p", POINT_COUNT);
+    return route.fulfill(
       json({
-        points: ids("p", POINT_COUNT).map((file_id) => ({ file_id, lat: 35.6812, lon: 139.7671, taken_at: "2026-09-10T10:00:00" })),
+        points: all.map((file_id) => ({ file_id, lat: 35.6812, lon: 139.7671, taken_at: "2026-09-10T10:00:00" })),
       }),
-    ),
-  );
+    );
+  });
   await page.route("**/api/addons/photo_diary/map-config", (route) =>
     route.fulfill(json({ tile_url: TILE_URL, attribution: "" })),
   );
   await page.route("**/api/addons/photo_diary/note*", (route) => route.fulfill(json({ state: "none", file_id: null })));
   await page.route("**/api/addons/photo_diary/library/shelves*", (route) => {
+    const members = route.request().method() === "POST" ? postedIds(route) : null;
+    if (members !== null) {
+      const shelves = members.length === 0 ? [] : [{ key: "member", label: "", count: members.length, file_ids: members }];
+      return route.fulfill(json({ shelves, total_shelves: shelves.length }));
+    }
     const offset = Number(new URL(route.request().url()).searchParams.get("offset") ?? 0);
     const shelves =
       offset > 0
@@ -56,18 +85,38 @@ export async function serveApi(page: Page) {
     route.fulfill(json({ shelves, total_shelves: 4 }));
   });
   await page.route("**/api/addons/photo_diary/library/shelf*", (route) => {
+    const members = route.request().method() === "POST" ? postedIds(route) : null;
+    if (members !== null) {
+      const page = paged(members, new URL(route.request().url()).searchParams);
+      return route.fulfill(json({ file_ids: page, total: members.length, label: "" }));
+    }
     const q = new URL(route.request().url()).searchParams;
-    const offset = Number(q.get("offset") ?? 0);
-    const limit = Number(q.get("limit") ?? 40);
     const all = ids(`${q.get("key")}-`, 45);
-    route.fulfill(json({ file_ids: all.slice(offset, offset + limit), total: all.length, label: "" }));
+    route.fulfill(json({ file_ids: paged(all, q), total: all.length, label: "" }));
   });
   await page.route("**/api/drives/*/smart-folders", (route) => route.fulfill(json([])));
+  await page.route("**/api/drives/*/collections", (route) => route.fulfill(json([])));
   await page.route(
     (url) => /\/api\/drives\/[^/]+\/files$/.test(url.pathname),
-    (route) => route.fulfill(json({ data: [], meta: { total: SCOPE_COUNT, page: 1, limit: 1 } })),
+    (route) => {
+      const q = new URL(route.request().url()).searchParams;
+      if (q.get("search") !== null) {
+        return route.fulfill(
+          json({
+            data: [{ id: "member-0", filename: "member-0.jpg", file_type: "image" }],
+            meta: { total: 1, page: 1, limit: 500 },
+          }),
+        );
+      }
+      route.fulfill(json({ data: [], meta: { total: SCOPE_COUNT, page: 1, limit: 1 } }));
+    },
   );
-  await page.route("**/api/addons/status*", (route) => route.fulfill(json({ addons: { knowledge: {} }, slots: {} })));
+  await page.route("**/api/addons/status*", (route) =>
+    route.fulfill(json({ addons: { knowledge: {}, intelligence: {} }, slots: {} })),
+  );
+  await page.route("**/api/addons/intelligence/search*", (route) =>
+    route.fulfill(json({ available: true, results: [] })),
+  );
   await page.route("**/api/drives/*/addon-policies", (route) =>
     route.fulfill(json({ addons: { knowledge: { default: true, features: { editor: true } } } })),
   );

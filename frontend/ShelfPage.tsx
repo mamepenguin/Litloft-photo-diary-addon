@@ -12,7 +12,7 @@ import { EmptyState } from "@/components/EmptyState";
 import { FileGrid } from "@/components/FileGrid";
 import { PageFrame } from "@/components/PageFrame";
 import { PageHeader } from "@/components/PageHeader";
-import { fetchMonths, fetchShelf, type TargetParams } from "./api";
+import { fetchMonths, fetchShelf, type MemberFileIds, type TargetParams } from "./api";
 import { isNotFound, isUnprocessable } from "./lib/errors";
 import {
   parseShelfUrl,
@@ -127,6 +127,8 @@ function Session({
   const target = useTarget(drive);
   const targetRef = useRef(target.selectedId);
   targetRef.current = target.selectedId;
+  const noSave = useRef(false);
+  noSave.current = target.failed || target.tooLarge;
 
   const [notAvailable, setNotAvailable] = useState(false);
   const [invalid, setInvalid] = useState(false);
@@ -164,7 +166,12 @@ function Session({
     let current = true;
     const changes = target.changes;
     const params = target.params;
-    (params ? fetchMonths(drive, params) : fetchMonths(drive)).then(
+    (target.fileIds !== null
+      ? fetchMonths(drive, params ?? undefined, target.fileIds)
+      : params
+        ? fetchMonths(drive, params)
+        : fetchMonths(drive)
+    ).then(
       (months) => {
         if (!current) return;
         if (changes === changesRef.current) setCount({ changes, value: photoTotal(months) });
@@ -176,7 +183,7 @@ function Session({
     return () => {
       current = false;
     };
-  }, [drive, target.ready, target.changes, target.params, monthsToken]);
+  }, [drive, target.ready, target.changes, target.params, target.fileIds, monthsToken]);
 
   const [savedPlace] = useState(() => loadShelfState(drive));
   const samePlace =
@@ -188,6 +195,7 @@ function Session({
     samePlace && target.ready && savedPlace.target === target.selectedId ? savedPlace : null;
 
   const flush = useCallback(() => {
+    if (noSave.current) return;
     if (loaded.current <= 0) return;
     saveShelfState(drive, {
       by: link.by,
@@ -271,8 +279,9 @@ function Session({
           target={{
             drive,
             app: { addon: "photo_diary" },
-            name: target.lookingUp ? null : (target.folder?.name ?? t("allPhotos")),
+            name: target.lookingUp ? null : (target.name ?? t("allPhotos")),
             folders: target.folders,
+            collections: { list: target.collections, retry: target.retryCollections },
             selectedId: target.selectedId,
             currentCount: targetTotal,
             label: t("target"),
@@ -288,12 +297,17 @@ function Session({
     >
       {/* The header's 8px bottom padding plus 4px under the phone's sort row is the design's gap. */}
       <div className="px-4 pb-6 pt-4 max-sm:-mt-1 max-sm:pt-0 sm:pb-8">
-        {target.ready ? (
+        {target.tooLarge ? (
+          <EmptyState icon={Images} title={t("targetUnavailable")} />
+        ) : target.failed ? (
+          <LoadError onRetry={target.retryTarget} />
+        ) : target.ready ? (
           <ShelfPhotos
             drive={drive}
             link={link}
             listKey={listKey}
             target={target.params}
+            fileIds={target.fileIds}
             restoreDepth={restore?.loaded}
             restoreScroll={restore?.scrollY}
             refreshToken={refreshToken}
@@ -323,6 +337,7 @@ function ShelfPhotos({
   link,
   listKey,
   target,
+  fileIds,
   restoreDepth,
   restoreScroll,
   refreshToken,
@@ -339,6 +354,7 @@ function ShelfPhotos({
   link: ShelfUrl;
   listKey: string;
   target: TargetParams | null;
+  fileIds: MemberFileIds | null;
   restoreDepth?: number;
   restoreScroll?: number;
   refreshToken: number;
@@ -360,6 +376,7 @@ function ShelfPhotos({
       try {
         const answer = await fetchShelf(drive, {
           target,
+          fileIds,
           by: link.by,
           key: link.key,
           sort: link.sort,
@@ -375,7 +392,7 @@ function ShelfPhotos({
         throw error;
       }
     },
-    [drive, target, link.by, link.key, link.sort, listKey],
+    [drive, target, fileIds, link.by, link.key, link.sort, listKey],
   );
 
   const paged = usePagedPhotos({
