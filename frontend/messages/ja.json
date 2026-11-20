@@ -17,17 +17,19 @@
       "map": "地図",
       "label": "表示"
     },
-    "classification": "分類",
     "classifications": {
       "month": "撮影月",
       "tag": "タグ",
       "collection": "コレクション",
-      "folder": "フォルダ"
+      "folder": "フォルダ",
+      "all": "なし"
     },
     "sort": {
-      "label": "並べ替え",
       "newest": "新しい順",
       "oldest": "古い順"
+    },
+    "library": {
+      "filteredEmpty": "条件に合う項目はありません"
     },
     "seeAll": "すべて見る",
     "noPhotos": "写真はありません",

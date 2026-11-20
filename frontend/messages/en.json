@@ -17,17 +17,19 @@
       "map": "Map",
       "label": "View"
     },
-    "classification": "Group by",
     "classifications": {
       "month": "Month taken",
       "tag": "Tag",
       "collection": "Collection",
-      "folder": "Folder"
+      "folder": "Folder",
+      "all": "None"
     },
     "sort": {
-      "label": "Sort",
       "newest": "Newest first",
       "oldest": "Oldest first"
+    },
+    "library": {
+      "filteredEmpty": "Nothing matches these filters"
     },
     "seeAll": "See all",
     "noPhotos": "No photos",

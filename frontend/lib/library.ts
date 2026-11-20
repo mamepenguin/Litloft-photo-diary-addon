@@ -1,7 +1,12 @@
+import { mergeLibraryTags } from "@/components/appshell/libraryFilters";
 import type { MemberFileIds, TargetParams } from "../api";
 
-export const CLASSIFICATIONS = ["month", "tag", "collection", "folder"] as const;
+export const CLASSIFICATIONS = ["month", "tag", "collection", "folder", "all"] as const;
 export type Classification = (typeof CLASSIFICATIONS)[number];
+
+/** The classifications that name a shelf, and so can open the shelf page. */
+export const SHELF_CLASSIFICATIONS = ["month", "tag", "collection", "folder"] as const;
+export type ShelfClassification = (typeof SHELF_CLASSIFICATIONS)[number];
 
 export const SORTS = ["newest", "oldest"] as const;
 export type Sort = (typeof SORTS)[number];
@@ -38,49 +43,40 @@ export type ShelfQuery = {
   offset: number;
 };
 
-export type ShelfUrl = { by: Classification; key: string; sort: Sort };
+export type ShelfUrl = { by: Classification; key: string; sort: Sort; tags: readonly string[] };
 
 const MONTH_KEY = /^\d{4}-(0[1-9]|1[0-2])$/;
 
-function classificationKey(drive: string): string {
-  return `litloft.addon.photo_diary.classification.${encodeURIComponent(drive)}`;
-}
-
-function sortKey(drive: string): string {
-  return `litloft.addon.photo_diary.sort.${encodeURIComponent(drive)}`;
-}
-
-export function readClassification(drive: string): Classification {
-  try {
-    const stored = localStorage.getItem(classificationKey(drive));
-    return CLASSIFICATIONS.find((value) => value === stored) ?? DEFAULT_CLASSIFICATION;
-  } catch {
-    return DEFAULT_CLASSIFICATION;
+/** The URL's `tag` values, in order, once each compared folded, empty values dropped. */
+export function parseChosenTags(search: string): string[] {
+  const chosen: string[] = [];
+  for (const tag of new URLSearchParams(search).getAll("tag")) {
+    if (tag === "") continue;
+    if (chosen.some((held) => held.toLowerCase() === tag.toLowerCase())) continue;
+    chosen.push(tag);
   }
+  return chosen;
 }
 
-export function writeClassification(drive: string, value: Classification): void {
-  try {
-    localStorage.setItem(classificationKey(drive), value);
-  } catch {
-    // Storage full or blocked: the page keeps the choice it was given.
-  }
+/** The Target's own tags then the chosen ones, for the requests that carry both. */
+export function withChosenTags(
+  target: TargetParams | null,
+  chosen: readonly string[],
+): TargetParams | null {
+  // An empty Target sends none=true alone; its chosen tags stay in the URL unsent.
+  if (target?.none) return target;
+  const tags = mergeLibraryTags(target?.tag ?? [], chosen);
+  const next: TargetParams = { ...target };
+  if (tags.length > 0) next.tag = tags;
+  else delete next.tag;
+  return Object.keys(next).length > 0 ? next : null;
 }
 
-export function readSort(drive: string): Sort {
+export function readLegacySort(drive: string): string | null {
   try {
-    const stored = localStorage.getItem(sortKey(drive));
-    return SORTS.find((value) => value === stored) ?? DEFAULT_SORT;
+    return localStorage.getItem(`litloft.addon.photo_diary.sort.${encodeURIComponent(drive)}`);
   } catch {
-    return DEFAULT_SORT;
-  }
-}
-
-export function writeSort(drive: string, value: Sort): void {
-  try {
-    localStorage.setItem(sortKey(drive), value);
-  } catch {
-    // Storage full or blocked: the page keeps the choice it was given.
+    return null;
   }
 }
 
@@ -141,13 +137,18 @@ export function shelfKeyTitle(
 
 export function parseShelfUrl(search: string): ShelfUrl | null {
   const params = new URLSearchParams(search);
-  const by = CLASSIFICATIONS.find((value) => value === params.get("by"));
+  const by = SHELF_CLASSIFICATIONS.find((value) => value === params.get("by"));
   if (!by) return null;
   if (!params.has("key")) return null;
   const key = params.get("key")!;
   if (key === "" && by !== "folder") return null;
   if (by === "month" && key !== "undated" && !MONTH_KEY.test(key)) return null;
-  return { by, key, sort: params.get("sort") === "oldest" ? "oldest" : "newest" };
+  return {
+    by,
+    key,
+    sort: params.get("sort") === "oldest" ? "oldest" : "newest",
+    tags: parseChosenTags(search),
+  };
 }
 
 export function shelfPageQuery(url: ShelfUrl): string {
@@ -155,6 +156,7 @@ export function shelfPageQuery(url: ShelfUrl): string {
   params.set("by", url.by);
   params.set("key", url.key);
   if (url.sort === "oldest") params.set("sort", "oldest");
+  for (const tag of url.tags) params.append("tag", tag);
   return `?${params.toString()}`;
 }
 

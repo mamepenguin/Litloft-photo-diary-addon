@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useLoad, type LoadState } from "@/components/appshell/useLoad";
 import { useMemberTarget } from "@/components/appshell/useMemberTarget";
 import { getCollections, getSmartFolders } from "@/lib/api";
@@ -43,8 +43,14 @@ export type Target = {
   retryFolders: () => void;
   collections: LoadState<CollectionSummary[]>;
   retryCollections: () => void;
-  /** A saved target's list is still being looked up; no photo request may go out. */
+  /** A saved target's list is still being looked up, or a `?target=` is pending; no photo request may go out. */
   lookingUp: boolean;
+  /** The look-up has ended and no `?target=` is pending. */
+  known: boolean;
+  /** A `?target=` id not yet applied or ignored. */
+  pendingId: string | null;
+  /** Drops a pending id unwritten, for a navigation or another menu choice. */
+  dropPending: () => void;
   /** The member target's members are being evaluated; no photo request may go out. */
   evaluating: boolean;
   /** No photo request may go out before ready. */
@@ -79,14 +85,61 @@ export type Target = {
  * The app's target: every active image of the drive, one of its smart folders,
  * or one of its collections. A folder that is gone or cannot be listed falls
  * back to the default target while its saved id stays, as the core's apps do.
+ *
+ * `targetParam` is a Home shortcut's `?target=` id. It holds every request
+ * back until the list of its own kind has loaded and the id is applied or
+ * ignored; `onTargetHandled` fires once then, for the page to drop it from the
+ * URL.
  */
-export function useTarget(drive: string): Target {
+export function useTarget(
+  drive: string,
+  targetParam: string | null = null,
+  onTargetHandled?: (choice: boolean) => void,
+): Target {
   const [savedId] = useState(() => readAppTarget(drive, APP));
   const [chosen, setChosen] = useState<string | null>(null);
+  const [pendingId, setPendingId] = useState<string | null>(() =>
+    targetParam !== null ? targetParam : null,
+  );
+  const handled = useRef(onTargetHandled);
+  handled.current = onTargetHandled;
   const loadFolders = useCallback(() => getSmartFolders(drive), [drive]);
   const { state: folders, retry: retryFolders } = useLoad(loadFolders);
   const loadCollections = useCallback(() => getCollections(drive), [drive]);
   const { state: collections, retry: retryCollections } = useLoad(loadCollections);
+
+  const isUsable = useCallback(
+    (candidate: SmartFolder) =>
+      resolveMemberTarget(candidate, KINDS) !== null || resolveAppTarget(candidate, KINDS).usable,
+    [],
+  );
+
+  // A pending id is resolved by the list of its own kind only.
+  useEffect(() => {
+    if (pendingId === null) return;
+    const isCollection = pendingId.startsWith("collection:");
+    let apply: string | null = null;
+    if (isCollection) {
+      if (collections.status === "loaded") {
+        const id = pendingId.slice("collection:".length);
+        if (collections.data.some((candidate) => candidate.id === id)) apply = pendingId;
+      } else if (collections.status !== "failed") {
+        return;
+      }
+    } else if (folders.status === "loaded") {
+      const candidate = folders.data.find((folder) => folder.id === pendingId) ?? null;
+      if (candidate !== null && isUsable(candidate)) apply = pendingId;
+    } else if (folders.status !== "failed") {
+      return;
+    }
+    const choice = apply !== null && apply !== savedId;
+    if (apply !== null) {
+      if (choice) writeAppTarget(drive, APP, apply);
+      setChosen(apply);
+    }
+    setPendingId(null);
+    handled.current?.(choice);
+  }, [pendingId, folders, collections, drive, savedId, isUsable]);
 
   // A retry after a failure keeps the default target in force while the list
   // loads, so only the first look-up holds the page back.
@@ -105,26 +158,32 @@ export function useTarget(drive: string): Target {
   const wantedId = wantedTarget.kind === "default" ? null : wantedTarget.id;
   const foldersLoading = folders.status === "loading" || folders.status === "idle";
   const collectionsLoading = collections.status === "loading" || collections.status === "idle";
-  const lookingUp =
+  // While an id is pending the saved target is neither looked up nor evaluated.
+  const savedLookingUp =
+    pendingId === null &&
     chosen === null &&
     ((wantedKind === "smart" && !foldersSettled && foldersLoading) ||
       (wantedKind === "collection" && !collectionsSettled && collectionsLoading));
+  const lookingUp = pendingId !== null || savedLookingUp;
 
   // The listed objects keep their identity while the other list arrives, so
   // the member evaluation is not restarted by a list finishing.
   const listedFolder = useMemo(
     () =>
-      wantedKind === "smart" && !lookingUp && folders.status === "loaded"
+      pendingId === null && wantedKind === "smart" && !savedLookingUp && folders.status === "loaded"
         ? (folders.data.find((candidate) => candidate.id === wantedId) ?? null)
         : null,
-    [wantedKind, wantedId, lookingUp, folders],
+    [pendingId, wantedKind, wantedId, savedLookingUp, folders],
   );
   const listedCollection = useMemo(
     () =>
-      wantedKind === "collection" && !lookingUp && collections.status === "loaded"
+      pendingId === null &&
+      wantedKind === "collection" &&
+      !savedLookingUp &&
+      collections.status === "loaded"
         ? (collections.data.find((candidate) => candidate.id === wantedId) ?? null)
         : null,
-    [wantedKind, wantedId, lookingUp, collections],
+    [pendingId, wantedKind, wantedId, savedLookingUp, collections],
   );
 
   const resolved = useMemo(() => resolveAppTarget(listedFolder, KINDS), [listedFolder]);
@@ -145,9 +204,11 @@ export function useTarget(drive: string): Target {
   // query; only a folder that fell back gives the default target.
   const folder = memberTarget !== null ? listedFolder : resolved.usable ? listedFolder : null;
   const collection = resolvedCollection !== null ? listedCollection : null;
-  const selectedId =
+  const resolvedId =
     collection !== null ? collectionTargetId(collection.id) : (folder?.id ?? DEFAULT_ID);
-  const name = collection?.name ?? folder?.name ?? null;
+  // While an id is pending the menu checks its row and the control reads `…`.
+  const selectedId = pendingId ?? resolvedId;
+  const name = pendingId !== null ? null : (collection?.name ?? folder?.name ?? null);
 
   const params = useMemo<TargetParams | null>(() => {
     if (memberTarget !== null) return memberTarget.kinds.length === 0 ? { none: true } : null;
@@ -169,17 +230,14 @@ export function useTarget(drive: string): Target {
 
   const choose = useCallback(
     (id: string) => {
+      if (pendingId !== null && id === pendingId) return;
+      setPendingId(null);
       writeAppTarget(drive, APP, id);
       setChosen(id);
     },
-    [drive],
+    [drive, pendingId],
   );
-
-  const isUsable = useCallback(
-    (candidate: SmartFolder) =>
-      resolveMemberTarget(candidate, KINDS) !== null || resolveAppTarget(candidate, KINDS).usable,
-    [],
-  );
+  const dropPending = useCallback(() => setPendingId(null), []);
 
   return {
     folders,
@@ -187,6 +245,9 @@ export function useTarget(drive: string): Target {
     collections,
     retryCollections,
     lookingUp,
+    known: !lookingUp,
+    pendingId,
+    dropPending,
     evaluating,
     ready: !lookingUp && !evaluating && !failed && !tooLarge,
     failed,
