@@ -24,6 +24,8 @@ ROUTES = [
     pytest.param("/library/shelf", {"by": "month", "key": "2026-10"}, id="shelf-month"),
     pytest.param("/library/shelf", {"by": "month", "key": "undated", "sort": "oldest"}, id="shelf-undated"),
     pytest.param("/library/shelf", {"by": "tag", "key": "trip", "offset": "1", "limit": "1"}, id="shelf-tag-paged"),
+    pytest.param("/library/shelves", {"by": "all"}, id="pd023-shelves-all"),
+    pytest.param("/library/shelf", {"by": "all", "key": "all", "sort": "oldest", "offset": "1", "limit": "2"}, id="pd023-shelf-all"),
 ]
 
 PHOTO_ROUTES = [
@@ -220,14 +222,17 @@ TARGET_PARAMS = [
 
 @pytest.mark.parametrize("route, base", PHOTO_ROUTES)
 @pytest.mark.parametrize("param", TARGET_PARAMS)
-def test_pd021_i1_a_post_with_any_target_query_parameter_is_422(env, route, base, param):
+def test_pd021_i1_pd024_a_post_with_any_target_query_parameter_but_a_library_tag_is_422(env, route, base, param):
     client, lib, *_ = env
     fid = lib.add(filename="a.jpg", taken="2026-10-03T08:00:00")
     assert _post(client, route, base, {"file_ids": [fid]}).status_code == 200
     r = _post(client, route, {**base, **param}, {"file_ids": [fid]})
     key = next(iter(param))
     assert f"{key}=" in str(r.request.url)
-    assert r.status_code == 422
+    if param == {"tag": ["trip"]} and route.startswith("/library/"):
+        assert r.status_code == 200
+    else:
+        assert r.status_code == 422
 
 
 # ---------------------------------------------------------------- other parameters, as the GET
