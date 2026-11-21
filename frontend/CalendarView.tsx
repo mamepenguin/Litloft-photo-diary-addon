@@ -501,7 +501,7 @@ export function CalendarView({
               className="min-w-0 group-data-[wide=false]/diary:mt-6"
             >
               {({ files, moreMayFollow }) => (
-                <FileGrid files={files} moreMayFollow={moreMayFollow} onRefresh={wrote} />
+                <FileGrid appCardMenu files={files} moreMayFollow={moreMayFollow} onRefresh={wrote} />
               )}
             </PhotoList>
           )}

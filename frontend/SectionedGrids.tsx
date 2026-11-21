@@ -53,6 +53,7 @@ export function SectionedGrids({ sections, files, moreMayFollow, onRefresh }: Pr
             </span>
           </h3>
           <FileGrid
+            appCardMenu
             files={sectionFiles}
             moreMayFollow={moreMayFollow && index === shown.length - 1}
             onRefresh={onRefresh}
