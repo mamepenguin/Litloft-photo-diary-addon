@@ -15,3 +15,4 @@
 | SPEC-PD-023 | implemented | docs/specs/app-parity.md | sha256:c5fa24046416441bf022b1fdc95e5368f1008702211930740093ff4ba8e45eb7 |
 | SPEC-PD-024 | implemented | docs/specs/app-parity.md | sha256:c5fa24046416441bf022b1fdc95e5368f1008702211930740093ff4ba8e45eb7 |
 | SPEC-PD-025 | implemented | docs/specs/app-parity.md | sha256:c5fa24046416441bf022b1fdc95e5368f1008702211930740093ff4ba8e45eb7 |
+| SPEC-PD-026 | draft | docs/specs/card-menu.md | |
