@@ -85,8 +85,8 @@ None: one prop per grid, no request, no string.
 
 ## Invariants
 
-I1. Every `<FileGrid` element in the addon's frontend source (tests excluded) carries `appCardMenu`; a new `FileGrid` without it fails the test that enumerates them, and the enumeration finds all five sites at baseline.
-I2. Every `<FileGrid` element in the addon's frontend source keeps passing an `onRefresh`, so a menu trash, rename or move still re-reads the view.
+I1. Every `<FileGrid` element in the `.tsx` files under `frontend/` (all subdirectories; `*.test.tsx` and `__tests__/` excluded) carries `appCardMenu` as a bare attribute or `appCardMenu={true}`; any other form, or none, fails the test that enumerates them, and the enumeration finds exactly the five files named in §7.
+I2. Every such `<FileGrid` element passes an `onRefresh` prop. That the passed function re-reads the view is library.md I13 and the existing view tests, unchanged.
 
 ## Checked, no action
 
