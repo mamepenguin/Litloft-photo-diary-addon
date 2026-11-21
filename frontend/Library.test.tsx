@@ -25,7 +25,7 @@ import en from "./messages/en.json";
 import Page from "./Page";
 import * as mapModule from "./map/createPhotoMap";
 import { loadState, saveState } from "./lib/savedState";
-import { writeAppTarget } from "@/lib/appPrefs";
+import { readTargetView, writeAppTarget, writeTargetView } from "@/lib/appPrefs";
 import * as coreApi from "@/lib/api";
 import type { SmartFolder } from "@/types/smartFolder";
 
@@ -292,7 +292,9 @@ function hold(match: (r: Req) => boolean) {
 }
 
 const PREF = "litloft.addon.photo_diary.";
-const PREF_KEYS = [`${PREF}classification.family`, `${PREF}sort.family`];
+const APP = { addon: "photo_diary" } as const;
+const VIEW_KEY = `${PREF}view.family`;
+const PREF_KEYS = [VIEW_KEY];
 const isShelves = (r: Req) => r.path === `${BASE}/library/shelves`;
 const isMonths = (r: Req) => r.path === `${BASE}/calendar/months`;
 const isPhotos = (r: Req) => r.path === `${BASE}/photos`;
@@ -477,8 +479,8 @@ function option(name: string): HTMLElement {
 const checked = (el: HTMLElement) =>
   el.getAttribute("aria-checked") === "true" || (el as HTMLInputElement).checked === true;
 
-const classificationButton = (value: string) => screen.findByRole("button", { name: new RegExp(value) });
-const sortButton = (value: string) => screen.findByRole("button", { name: `並べ替え: ${value}` });
+const classificationButton = (value: string) => screen.findByRole("button", { name: `分類: ${value}` });
+const sortButton = (value: string) => screen.findByRole("button", { name: `並び順: ${value}` });
 
 async function classify(from: string, to: string) {
   await click(await classificationButton(from));
@@ -674,13 +676,13 @@ describe("SPEC-PD-019 I10: classification and sort", () => {
     expect(requests.find(isShelves)!.method).toBe("GET");
   });
 
-  it("SPEC-PD-019 the menus show the value in force, and the sort's accessible name is 並べ替え: <value>", async () => {
+  it("SPEC-PD-019 the menus show the value in force, and the sort's accessible name is 並び順: <value>", async () => {
     await settled("?view=library");
     await classificationButton("撮影月");
     await sortButton("新しい順");
     await click(await classificationButton("撮影月"));
     await waitFor(() => option("撮影月"));
-    for (const name of ["撮影月", "タグ", "コレクション", "フォルダ"]) expect(checked(option(name))).toBe(name === "撮影月");
+    for (const name of ["撮影月", "タグ", "コレクション", "フォルダ", "なし"]) expect(checked(option(name))).toBe(name === "撮影月");
   });
 
   it("SPEC-PD-019 changing the classification redraws from the first page, without touching the URL or history", async () => {
@@ -715,14 +717,15 @@ describe("SPEC-PD-019 I10: classification and sort", () => {
     expect(seeAllHref().searchParams.has("sort")).toBe(false);
   });
 
-  it("SPEC-PD-019 I10 the chosen classification and sort are in force on the drive's next load, under the documented keys", async () => {
+  it("SPEC-PD-019 I10 the chosen classification and sort are in force on the drive's next load, under the per-Target view key", async () => {
     const first = await settled("?view=library");
     await shelvesDrawn(12);
     await classify("撮影月", "コレクション");
     await sortBy("新しい順", "古い順");
     await shelvesDrawn(2);
-    expect(localStorage.getItem("litloft.addon.photo_diary.classification.family")).not.toBeNull();
-    expect(localStorage.getItem("litloft.addon.photo_diary.sort.family")).not.toBeNull();
+    expect(readTargetView(APP, "family", "default")).toEqual({ group: "collection", sort: "oldest" });
+    expect(localStorage.getItem(`${PREF}classification.family`)).toBeNull();
+    expect(localStorage.getItem(`${PREF}sort.family`)).toBeNull();
     first.unmount();
     requests = [];
     await settled("");
@@ -745,12 +748,11 @@ describe("SPEC-PD-019 I10: classification and sort", () => {
     await waitFor(() => expect(shelfReads().length).toBeGreaterThan(0));
     expect(shelfReads()[0].query.get("by")).toBe("month");
     expect(shelfReads()[0].query.get("sort")).toBe("newest");
-    expect(localStorage.getItem(`litloft.addon.photo_diary.classification.${encodeURIComponent("a/b 家族")}`)).toBeNull();
+    expect(localStorage.getItem(`litloft.addon.photo_diary.view.${encodeURIComponent("a/b 家族")}`)).toBeNull();
   });
 
   it.each(["bogus", "", "{", "Tag"])("SPEC-PD-019 an unknown stored value %j gives the defaults", async (value) => {
-    localStorage.setItem("litloft.addon.photo_diary.classification.family", value);
-    localStorage.setItem("litloft.addon.photo_diary.sort.family", value);
+    localStorage.setItem(VIEW_KEY, JSON.stringify({ default: { group: value, sort: value } }));
     await settled("?view=library");
     await shelvesDrawn(12);
     expect(shelfReads()[0].query.get("by")).toBe("month");
@@ -1201,6 +1203,35 @@ describe("SPEC-PD-019 item 5: a write on the calendar or the map", () => {
     await waitFor(() => expect(screen.queryByText("読み込めませんでした")).toBeNull());
     expect(seeAll()).toHaveLength(12);
   });
+
+  it("SPEC-PD-023 item 6 retrying a failed なし re-read counts no write, so the calendar does not read its list again", async () => {
+    writeTargetView(APP, "family", "default", { group: "all" });
+    answer(
+      (r) => r.path === `${BASE}/library/shelf` && r.query.get("by") === "all",
+      () => json({ file_ids: ids("all", 3), total: 3, label: "" }),
+      false,
+    );
+    await settled("?view=library");
+    await waitFor(() => expect(visibleGrids()).toHaveLength(1));
+    await openDayList();
+    await refreshShownGrid();
+    answer(
+      (r) => r.path === `${BASE}/library/shelf` && r.query.get("by") === "all",
+      () => json({ detail: "boom" }, 500),
+    );
+    await click(tab("ライブラリ"));
+    await screen.findByText("読み込めませんでした");
+    await click(tab("カレンダー"));
+    await flush();
+    await click(tab("ライブラリ"));
+    await flush();
+    const reads = photoReads().length;
+    await click(screen.getByRole("button", { name: "再試行" }));
+    await waitFor(() => expect(screen.queryByText("読み込めませんでした")).toBeNull());
+    await click(tab("カレンダー"));
+    await flush();
+    expect(photoReads()).toHaveLength(reads);
+  });
 });
 
 // ---------------------------------------------------------------- item 5: a write on the Library
@@ -1227,6 +1258,33 @@ describe("SPEC-PD-019 item 5: a write on the Library", () => {
     await click(tab("カレンダー"));
     await flush();
     expect(photoReads()).toHaveLength(reads + 1);
+  });
+
+  it("SPEC-PD-019 I14 SPEC-PD-023 item 6 a write on the なし grid makes the calendar's open day list read again once", async () => {
+    writeTargetView(APP, "family", "default", { group: "all" });
+    answer(
+      (r) => r.path === `${BASE}/library/shelf` && r.query.get("by") === "all",
+      () => json({ file_ids: ids("all", 3), total: 3, label: "" }),
+      false,
+    );
+    await settled("?view=library");
+    await waitFor(() => expect(visibleGrids()).toHaveLength(1));
+    await openDayList();
+    await click(tab("ライブラリ"));
+    await flush();
+    const reads = photoReads().length;
+    const allReads = () =>
+      requests.filter((r) => r.path === `${BASE}/library/shelf` && r.query.get("by") === "all").length;
+    const grid = allReads();
+    h.missing.add("d2026-10-03-0");
+    await refreshShownGrid();
+    await waitFor(() => expect(allReads()).toBe(grid + 1));
+    expect(photoReads()).toHaveLength(reads);
+    await click(tab("カレンダー"));
+    await waitFor(() => expect(photoReads()).toHaveLength(reads + 1));
+    await waitFor(() =>
+      expect(within(visibleGrids()[0]).queryAllByTestId("file")).toHaveLength(4),
+    );
   });
 
   it("SPEC-PD-019 I14 a write on the Library makes the map's point list read again once, and a later return with nothing written does not", async () => {
@@ -1292,13 +1350,13 @@ describe("SPEC-PD-019 I9: going back to the Library", () => {
     const probe = await settled("?view=library");
     await shelvesDrawn(12);
     await classify("撮影月", "フォルダ");
-    const folderValue = localStorage.getItem(PREF_KEYS[0]);
-    expect(folderValue).not.toBeNull();
+    const folderView = readTargetView(APP, "family", "default");
+    expect(folderView.group).toBe("folder");
     await classify("フォルダ", "撮影月");
     probe.unmount();
     sessionStorage.clear();
     await leaveWithTwoPages();
-    localStorage.setItem(PREF_KEYS[0], folderValue!);
+    writeTargetView(APP, "family", "default", { group: folderView.group });
     await settled("?view=library");
     await flush();
     expect(new Set(shelfReads().map((r) => r.query.get("offset")))).toEqual(new Set(["0"]));

@@ -372,7 +372,7 @@ const headerText = () => document.querySelector("header")?.textContent ?? "";
 const query = () => new URLSearchParams(window.location.search);
 const renderedIds = () =>
   Array.from(document.querySelectorAll("[data-testid=file]")).map((e) => e.getAttribute("data-id")!);
-const sortButton = (value: string) => screen.findByRole("button", { name: `並べ替え: ${value}` });
+const sortButton = (value: string) => screen.findByRole("button", { name: `並び順: ${value}` });
 
 function option(name: string): HTMLElement {
   return (screen.queryByRole("menuitemradio", { name }) ?? screen.getByRole("radio", { name })) as HTMLElement;

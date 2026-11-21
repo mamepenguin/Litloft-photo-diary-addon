@@ -60,6 +60,7 @@ export function PhotoShelf({
   drive,
   by,
   sort,
+  tags = [],
   pathname,
   onRefresh,
   onSeeAll,
@@ -69,6 +70,7 @@ export function PhotoShelf({
   drive: string;
   by: Classification;
   sort: Sort;
+  tags?: readonly string[];
   pathname: string;
   onRefresh: () => void;
   onSeeAll: () => void;
@@ -91,7 +93,7 @@ export function PhotoShelf({
           {photoCountText(shelf.count, locale, t)}
         </span>
         <Link
-          href={shelfHref(pathname, { by, key: shelf.key, sort })}
+          href={shelfHref(pathname, { by, key: shelf.key, sort, tags })}
           onClick={onSeeAll}
           className="ml-auto flex flex-shrink-0 items-center gap-0.5 text-sm text-text-muted hover:text-text-primary"
         >

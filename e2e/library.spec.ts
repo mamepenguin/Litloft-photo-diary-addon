@@ -37,31 +37,55 @@ async function open(page: Page, query: string, hash = "#ja") {
 
 const box = async (page: Page, locator: ReturnType<Page["locator"]>) => (await locator.boundingBox())!;
 
+async function noHorizontalScroll(page: Page) {
+  const { scrollWidth, clientWidth } = await page.evaluate(() => ({
+    scrollWidth: document.scrollingElement!.scrollWidth,
+    clientWidth: document.scrollingElement!.clientWidth,
+  }));
+  expect(scrollWidth).toBeLessThanOrEqual(clientWidth);
+}
+
 test.describe("SPEC-PD-019 9.4: the controls row", () => {
-  test("SPEC-PD-019 at 375 px the classification shows its value without 分類, and both buttons are 44 px tall", async ({ page }) => {
+  test("SPEC-PD-019 at 375 px the tag menu is alone on the first row and the two view menus share the second", async ({ page }) => {
     await page.setViewportSize({ width: 375, height: 800 });
     await open(page, "?view=library");
-    const classification = page.getByRole("button", { name: /撮影月/ });
-    const sort = page.getByRole("button", { name: "並べ替え: 新しい順" });
+    const tag = page.getByRole("button", { name: "タグ: 指定なし", exact: true });
+    const classification = page.getByRole("button", { name: "分類: 撮影月", exact: true });
+    const sort = page.getByRole("button", { name: "並び順: 新しい順", exact: true });
+    await expect(tag).toBeVisible();
     await expect(classification).toBeVisible();
     await expect(sort).toBeVisible();
-    expect(await classification.innerText()).not.toContain("分類");
+    expect(await classification.innerText()).toContain("分類");
     expect(await classification.innerText()).toContain("撮影月");
-    expect((await box(page, classification)).height).toBeGreaterThanOrEqual(44);
-    expect((await box(page, sort)).height).toBeGreaterThanOrEqual(44);
-    const sortText = await sort.innerText();
-    expect(sortText).toContain("新しい順");
-    expect(sortText).not.toContain("並べ替え");
+    expect((await box(page, tag)).y).toBeLessThan((await box(page, classification)).y);
+    expect((await box(page, classification)).y).toBeGreaterThanOrEqual((await box(page, tag)).y + (await box(page, tag)).height - 1);
+    await noHorizontalScroll(page);
+  });
+
+  test.describe("on a touch screen", () => {
+    // The core's menus take their 44px height from `pointer: coarse`, which a
+    // phone reports; a desktop pointer at 375px keeps the compact height.
+    test.use({ hasTouch: true, isMobile: true });
+
+    test("SPEC-PD-019 at 375 px the tag, classification and sort buttons are 44 px tall", async ({ page }) => {
+      await page.setViewportSize({ width: 375, height: 800 });
+      await open(page, "?view=library");
+      for (const name of ["タグ: 指定なし", "分類: 撮影月", "並び順: 新しい順"]) {
+        const button = page.getByRole("button", { name, exact: true });
+        await expect(button).toBeVisible();
+        expect((await box(page, button)).height).toBeGreaterThanOrEqual(44);
+      }
+    });
   });
 
   for (const width of [640, 768, 1280]) {
     test(`SPEC-PD-019 at ${width} px the classification shows 分類 and its value`, async ({ page }) => {
       await page.setViewportSize({ width, height: 800 });
       await open(page, "?view=library");
-      const text = await page.getByRole("button", { name: /撮影月/ }).innerText();
+      const text = await page.getByRole("button", { name: "分類: 撮影月", exact: true }).innerText();
       expect(text).toContain("分類");
       expect(text).toContain("撮影月");
-      expect(await page.getByRole("button", { name: "並べ替え: 新しい順" }).innerText()).not.toContain("並べ替え");
+      expect(await page.getByRole("button", { name: "並び順: 新しい順", exact: true }).innerText()).not.toContain("並べ替え");
     });
   }
 
@@ -70,10 +94,16 @@ test.describe("SPEC-PD-019 9.4: the controls row", () => {
       await page.setViewportSize({ width, height: 800 });
       await open(page, "?view=library");
       const tabs = await box(page, page.getByRole("tablist"));
-      const classification = await box(page, page.getByRole("button", { name: /撮影月/ }));
-      const sort = await box(page, page.getByRole("button", { name: "並べ替え: 新しい順" }));
+      const tag = await box(page, page.getByRole("button", { name: "タグ: 指定なし", exact: true }));
+      const classification = await box(page, page.getByRole("button", { name: "分類: 撮影月", exact: true }));
+      const sort = await box(page, page.getByRole("button", { name: "並び順: 新しい順", exact: true }));
       const firstSeeAll = await box(page, page.getByRole("link", { name: "すべて見る" }).first());
-      expect(classification.y).toBeGreaterThanOrEqual(tabs.y + tabs.height - 1);
+      expect(tag.y).toBeGreaterThanOrEqual(tabs.y + tabs.height - 1);
+      if (width < 640) {
+        expect(classification.y).toBeGreaterThanOrEqual(tag.y + tag.height - 1);
+      } else {
+        expect(Math.abs(tag.y + tag.height / 2 - (classification.y + classification.height / 2))).toBeLessThanOrEqual(2);
+      }
       expect(Math.abs(classification.y + classification.height / 2 - (sort.y + sort.height / 2))).toBeLessThanOrEqual(2);
       expect(firstSeeAll.y).toBeGreaterThanOrEqual(Math.max(classification.y + classification.height, sort.y + sort.height) - 1);
       const tabNames = await page.getByRole("tab").allInnerTexts();

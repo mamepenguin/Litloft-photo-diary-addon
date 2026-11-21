@@ -244,14 +244,35 @@ def _no_target_parameters(request: Request) -> None:
         )
 
 
+def _library_tag_parameters(request: Request) -> list[str]:
+    if (_TARGET_PARAMETERS - {"tag"}).intersection(request.query_params):
+        raise HTTPException(
+            status_code=422, detail="A member set takes no target query parameter"
+        )
+    tags = request.query_params.getlist("tag")
+    if any(not tag for tag in tags):
+        raise HTTPException(status_code=422, detail="tag must not be empty")
+    return tags
+
+
+def _tagged(db: Session, drive: str, query, tags: list[str]):
+    """Narrow a member set by the same tag predicate the listing's GET applies."""
+    if not tags:
+        return query
+    listing, _ = filtered_drive_files(db, drive, tag=tags, type=["image"])
+    return query.where(File.id.in_(listing.with_entities(File.id)))
+
+
 def _count(db: Session, query) -> int:
     return db.scalar(select(func.count()).select_from(query.subquery())) or 0
 
 
 # ---------------------------------------------------------------- library
 
-ShelfBy = Literal["month", "tag", "collection", "folder"]
+ShelfBy = Literal["month", "tag", "collection", "folder", "all"]
 ShelfSort = Literal["newest", "oldest"]
+
+ALL = "all"
 
 UNDATED = "undated"
 NO_TAG = "no_tag"
@@ -551,6 +572,27 @@ def _shelves(
     shelf_limit: int,
     offset: int,
 ) -> ShelvesResponse:
+    if by == "all":
+        # One shelf whenever the conditions select a photo; its photos page
+        # through /library/shelf, not through the shelf list's offset.
+        count = _count(db, base)
+        if count == 0:
+            return ShelvesResponse(shelves=[], total_shelves=0)
+        return ShelvesResponse(
+            shelves=[
+                ShelfEntry(
+                    key=ALL,
+                    label="",
+                    count=count,
+                    file_ids=list(
+                        db.scalars(
+                            base.order_by(*_capture_order(sort)).limit(per_shelf)
+                        )
+                    ),
+                )
+            ],
+            total_shelves=1,
+        )
     labels: dict[str, str] = {}
     folder_paths: dict[str, list[str]] = {}
     if by == "month":
@@ -618,12 +660,12 @@ def library_shelves_post(
     shelf_limit: int = Query(12, ge=1, le=50),
     offset: int = Query(0, ge=0),
     drive: str = Depends(_drive_scope),
-    _members: None = Depends(_no_target_parameters),
+    tags: list[str] = Depends(_library_tag_parameters),
     db: Session = Depends(get_db),
 ):
     return _shelves(
         db,
-        _photo_query(db, drive, None, body.file_ids),
+        _tagged(db, drive, _photo_query(db, drive, None, body.file_ids), tags),
         drive,
         by,
         sort,
@@ -643,14 +685,21 @@ def _shelf(
     limit: int,
     offset: int,
 ) -> ShelfResponse:
-    if by != "folder" and not key:
-        raise HTTPException(status_code=422, detail="key is empty")
-    if by == "month" and key != UNDATED and not _MONTH_KEY.match(key):
-        raise HTTPException(status_code=422, detail="month key must be YYYY-MM or undated")
-    if by == "folder":
+    if by == "all":
+        if key != ALL:
+            raise HTTPException(status_code=422, detail="by=all takes only key=all")
+        query = base
+        label = ""
+    elif by == "folder":
         query = base.where(File.folder_path.in_(_folder_paths(db, base, key)))
         label = _folder_label(key)
     else:
+        if not key:
+            raise HTTPException(status_code=422, detail="key is empty")
+        if by == "month" and key != UNDATED and not _MONTH_KEY.match(key):
+            raise HTTPException(
+                status_code=422, detail="month key must be YYYY-MM or undated"
+            )
         query = base.where(_shelf_filter(by, key, drive))
         name = ""
         if by == "collection" and key != NO_COLLECTION:
@@ -698,12 +747,12 @@ def library_shelf_post(
     limit: int = Query(40, ge=1, le=100),
     offset: int = Query(0, ge=0),
     drive: str = Depends(_drive_scope),
-    _members: None = Depends(_no_target_parameters),
+    tags: list[str] = Depends(_library_tag_parameters),
     db: Session = Depends(get_db),
 ):
     return _shelf(
         db,
-        _photo_query(db, drive, None, body.file_ids),
+        _tagged(db, drive, _photo_query(db, drive, None, body.file_ids), tags),
         drive,
         by,
         key,

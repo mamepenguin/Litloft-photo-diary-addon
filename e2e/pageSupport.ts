@@ -77,7 +77,13 @@ export async function serveApi(page: Page) {
       const shelves = members.length === 0 ? [] : [{ key: "member", label: "", count: members.length, file_ids: members }];
       return route.fulfill(json({ shelves, total_shelves: shelves.length }));
     }
-    const offset = Number(new URL(route.request().url()).searchParams.get("offset") ?? 0);
+    const q = new URL(route.request().url()).searchParams;
+    const offset = Number(q.get("offset") ?? 0);
+    if (q.get("by") === "all") {
+      const all = ids("all-", 45);
+      const shelves = offset > 0 ? [] : [{ key: "all", label: "", count: all.length, file_ids: all }];
+      return route.fulfill(json({ shelves, total_shelves: shelves.length }));
+    }
     const shelves =
       offset > 0
         ? []
@@ -94,6 +100,15 @@ export async function serveApi(page: Page) {
     const all = ids(`${q.get("key")}-`, 45);
     route.fulfill(json({ file_ids: paged(all, q), total: all.length, label: "" }));
   });
+  await page.route("**/api/drives/*/tag-counts*", (route) =>
+    route.fulfill(json([{ name: "beach", count: 4 }])),
+  );
+  await page.route("**/api/drives/*/tag-counts/query", (route) =>
+    route.fulfill(json([{ name: "beach", count: 4 }])),
+  );
+  await page.route("**/api/drives/*/home-shortcuts", (route) =>
+    route.request().method() === "PUT" ? route.fulfill(json({ ok: true })) : route.fulfill(json([])),
+  );
   await page.route("**/api/drives/*/smart-folders", (route) => route.fulfill(json([])));
   await page.route("**/api/drives/*/collections", (route) => route.fulfill(json([])));
   await page.route(

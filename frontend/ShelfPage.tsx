@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import { ChevronLeft, Images } from "lucide-react";
+import { ChevronLeft, Images, Search } from "lucide-react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useLocale, useTranslations } from "next-intl";
 import { useCurrentDrive } from "@/components/CurrentDriveProvider";
@@ -19,6 +19,7 @@ import {
   photoCountText,
   shelfKeyTitle,
   shelfPageQuery,
+  withChosenTags,
   type ShelfUrl,
 } from "./lib/library";
 import {
@@ -58,15 +59,23 @@ function Frame({
   );
 }
 
-function backHref(pathname: string): string {
-  return `${pathname.replace(/\/[^/]+$/, "")}?view=library`;
+function sameTags(a: readonly string[], b: readonly string[]): boolean {
+  const one = a.map((tag) => tag.toLowerCase());
+  const two = b.map((tag) => tag.toLowerCase());
+  return one.length === two.length && one.every((tag, index) => tag === two[index]);
 }
 
-function BackLink({ pathname }: { pathname: string }) {
+function backHref(pathname: string, tags: readonly string[]): string {
+  const params = new URLSearchParams({ view: "library" });
+  for (const tag of tags) params.append("tag", tag);
+  return `${pathname.replace(/\/[^/]+$/, "")}?${params.toString()}`;
+}
+
+function BackLink({ pathname, tags }: { pathname: string; tags: readonly string[] }) {
   const t = useTranslations("photoDiary");
   return (
     <Link
-      href={backHref(pathname)}
+      href={backHref(pathname, tags)}
       className="flex items-center gap-1 text-sm text-text-muted transition-colors hover:text-text-primary"
     >
       <ChevronLeft size={16} aria-hidden="true" />
@@ -84,7 +93,7 @@ function Invalid({ drive, pathname }: { drive: string; pathname: string }) {
         <PageHeader
           titleIcon={Images}
           title={t("nav.label")}
-          breadcrumb={<BackLink pathname={pathname} />}
+          breadcrumb={<BackLink pathname={pathname} tags={[]} />}
         />
       }
     >
@@ -106,6 +115,7 @@ function Page({ drive }: { drive: string }) {
       drive={drive}
       link={link}
       pathname={pathname}
+      search={search}
     />
   );
 }
@@ -116,10 +126,12 @@ function Session({
   drive,
   link,
   pathname,
+  search,
 }: {
   drive: string;
   link: ShelfUrl;
   pathname: string;
+  search: string;
 }) {
   const t = useTranslations("photoDiary");
   const locale = useLocale();
@@ -129,6 +141,12 @@ function Session({
   targetRef.current = target.selectedId;
   const noSave = useRef(false);
   noSave.current = target.failed || target.tooLarge;
+
+  const [tagOverride, setTagOverride] = useState<{ from: string; tags: string[] } | null>(null);
+  const tags = tagOverride !== null && tagOverride.from === search ? tagOverride.tags : link.tags;
+  useEffect(() => {
+    if (tagOverride !== null && tagOverride.from !== search) setTagOverride(null);
+  }, [search, tagOverride]);
 
   const [notAvailable, setNotAvailable] = useState(false);
   const [invalid, setInvalid] = useState(false);
@@ -147,7 +165,7 @@ function Session({
   const [monthsToken, setMonthsToken] = useState(0);
   const loaded = useRef(0);
   const lastScrollY = useLastScrollY();
-  const listKey = `${link.by}|${link.key}|${link.sort}|${target.changes}`;
+  const listKey = `${link.by}|${link.key}|${link.sort}|${target.changes}|${tags.join("\u0000")}`;
   const listKeyRef = useRef(listKey);
   listKeyRef.current = listKey;
 
@@ -190,7 +208,8 @@ function Session({
     savedPlace !== null &&
     savedPlace.by === link.by &&
     savedPlace.key === link.key &&
-    savedPlace.sort === link.sort;
+    savedPlace.sort === link.sort &&
+    sameTags(savedPlace.tags ?? [], tags);
   const restore =
     samePlace && target.ready && savedPlace.target === target.selectedId ? savedPlace : null;
 
@@ -202,10 +221,11 @@ function Session({
       key: link.key,
       sort: link.sort,
       target: targetRef.current,
+      tags: [...tags],
       loaded: loaded.current,
       scrollY: lastScrollY.current,
     });
-  }, [drive, link.by, link.key, link.sort]);
+  }, [drive, link.by, link.key, link.sort, tags]);
 
   useLayoutEffect(() => {
     window.addEventListener("pagehide", flush);
@@ -217,7 +237,20 @@ function Session({
 
   const changeSort = (sort: ShelfUrl["sort"]) => {
     if (sort === link.sort) return;
-    router.replace(`${pathname}${shelfPageQuery({ ...link, sort })}`, { scroll: false });
+    router.replace(`${pathname}${shelfPageQuery({ ...link, sort, tags })}`, { scroll: false });
+  };
+
+  // A Target choice drops the tag by replace; the chosen tags read as empty
+  // from it on, until the URL reflects the replace.
+  const chooseTarget = (id: string) => {
+    if (id === target.selectedId) return;
+    const params = new URLSearchParams(search);
+    params.delete("tag");
+    setTagOverride({ from: search, tags: [] });
+    router.replace(`${pathname}${params.toString() ? `?${params.toString()}` : ""}`, {
+      scroll: false,
+    });
+    target.choose(id);
   };
   const refresh = () => {
     setRefreshFailed(false);
@@ -274,11 +307,12 @@ function Session({
           icon={Images}
           title={title}
           countDetail={total === null ? null : photoCountText(total, locale, t)}
-          breadcrumb={<BackLink pathname={pathname} />}
+          breadcrumb={<BackLink pathname={pathname} tags={tags} />}
           actions={<SortMenu quiet value={link.sort} onChange={changeSort} />}
           target={{
             drive,
             app: { addon: "photo_diary" },
+            homeEntry: target.known ? "photo_diary" : undefined,
             name: target.lookingUp ? null : (target.name ?? t("allPhotos")),
             folders: target.folders,
             collections: { list: target.collections, retry: target.retryCollections },
@@ -289,7 +323,7 @@ function Session({
             unavailableLabel: t("targetUnavailable"),
             defaultTargetTypes: ["image"],
             isUsable: target.isUsable,
-            onChoose: target.choose,
+            onChoose: chooseTarget,
             onRetryFolders: target.retryFolders,
           }}
         />
@@ -307,6 +341,7 @@ function Session({
             link={link}
             listKey={listKey}
             target={target.params}
+            tags={tags}
             fileIds={target.fileIds}
             restoreDepth={restore?.loaded}
             restoreScroll={restore?.scrollY}
@@ -337,6 +372,7 @@ function ShelfPhotos({
   link,
   listKey,
   target,
+  tags,
   fileIds,
   restoreDepth,
   restoreScroll,
@@ -354,6 +390,7 @@ function ShelfPhotos({
   link: ShelfUrl;
   listKey: string;
   target: TargetParams | null;
+  tags: readonly string[];
   fileIds: MemberFileIds | null;
   restoreDepth?: number;
   restoreScroll?: number;
@@ -370,12 +407,13 @@ function ShelfPhotos({
   const t = useTranslations("photoDiary");
   const handlers = useRef({ onAnswer, onTotal, onLoaded, onRefreshResult, onInvalid });
   handlers.current = { onAnswer, onTotal, onLoaded, onRefreshResult, onInvalid };
+  const params = useMemo(() => withChosenTags(target, tags), [target, tags]);
 
   const fetchIds = useCallback(
     async (offset: number, limit: number) => {
       try {
         const answer = await fetchShelf(drive, {
-          target,
+          target: params,
           fileIds,
           by: link.by,
           key: link.key,
@@ -392,7 +430,7 @@ function ShelfPhotos({
         throw error;
       }
     },
-    [drive, target, fileIds, link.by, link.key, link.sort, listKey],
+    [drive, params, fileIds, link.by, link.key, link.sort, listKey],
   );
 
   const paged = usePagedPhotos({
@@ -421,7 +459,11 @@ function ShelfPhotos({
   if (paged.phase === "loading") return <Skeleton />;
 
   if (paged.total === 0) {
-    return <EmptyState icon={Images} title={t("noPhotos")} />;
+    return tags.length > 0 ? (
+      <EmptyState icon={Search} title={t("library.filteredEmpty")} />
+    ) : (
+      <EmptyState icon={Images} title={t("noPhotos")} />
+    );
   }
 
   return (

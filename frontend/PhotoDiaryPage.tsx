@@ -9,16 +9,17 @@ import { AppHeader } from "@/components/appshell/AppHeader";
 import { PageFrame } from "@/components/PageFrame";
 import { PageHeader } from "@/components/PageHeader";
 import { PageTabs } from "@/components/PageTabs";
+import { readLegacyGroup, readTargetView, writeTargetView, type TargetView } from "@/lib/appPrefs";
 import { CalendarView } from "./CalendarView";
 import { LibraryFace } from "./LibraryFace";
 import { MapView, type MapRestore } from "./MapView";
 import type { ListPosition } from "./PhotoList";
 import { buildPageQuery, parsePageUrl, type PageUrl } from "./lib/pageUrl";
 import {
-  readClassification,
-  readSort,
-  writeClassification,
-  writeSort,
+  CLASSIFICATIONS,
+  SORTS,
+  parseChosenTags,
+  readLegacySort,
   photoCountText,
   type Classification,
   type Sort,
@@ -38,6 +39,19 @@ import { PAGE_SIZE } from "./usePagedPhotos";
 
 type View = PageUrl["view"];
 type LibraryRestore = NonNullable<SavedState["library"]>;
+type TagOverride = { from: string; tags: string[] };
+
+const APP = { addon: "photo_diary" } as const;
+
+function offered<T extends string>(allowed: readonly T[], value: string | null | undefined): T | null {
+  return allowed.find((candidate) => candidate === value) ?? null;
+}
+
+function sameTags(a: readonly string[], b: readonly string[]): boolean {
+  const one = a.map((tag) => tag.toLowerCase());
+  const two = b.map((tag) => tag.toLowerCase());
+  return one.length === two.length && one.every((tag, index) => tag === two[index]);
+}
 
 export default function PhotoDiaryPage() {
   const drive = useCurrentDrive();
@@ -72,9 +86,36 @@ function Session({ drive }: { drive: string }) {
   const locale = useLocale();
   const router = useRouter();
   const pathname = usePathname();
-  const search = useSearchParams().toString();
+  const searchParams = useSearchParams();
+  const search = searchParams.toString();
   const url = useMemo(() => parsePageUrl(`?${search}`), [search]);
-  const target = useTarget(drive);
+  const [initialTarget] = useState(() => searchParams.get("target"));
+  const [tagOverride, setTagOverride] = useState<TagOverride | null>(null);
+  const [libraryTags, setLibraryTags] = useState<string[]>(() =>
+    url.view === "library" ? parseChosenTags(search) : [],
+  );
+  const searchRef = useRef(search);
+  searchRef.current = search;
+
+  // A pending Home shortcut leaves the URL once applied or ignored. A Target
+  // choice made by it drops the tag in the same replace, and the chosen tags
+  // read as empty from then until the URL reflects it.
+  const onTargetHandled = useCallback(
+    (choice: boolean) => {
+      const current = new URLSearchParams(window.location.search);
+      current.delete("target");
+      if (choice) {
+        current.delete("tag");
+        setTagOverride({ from: searchRef.current, tags: [] });
+        setLibraryTags([]);
+      }
+      const next = current.toString();
+      router.replace(`${pathname}${next ? `?${next}` : ""}`, { scroll: false });
+    },
+    [pathname, router],
+  );
+
+  const target = useTarget(drive, initialTarget, onTargetHandled);
   const targetId = useRef(target.selectedId);
   targetId.current = target.selectedId;
   // Leaving under a failed evaluation or a too-large set writes nothing, so the
@@ -82,12 +123,58 @@ function Session({ drive }: { drive: string }) {
   const noSave = useRef(false);
   noSave.current = target.failed || target.tooLarge;
 
-  const [by, setBy] = useState<Classification>(() => readClassification(drive));
-  const [sort, setSort] = useState<Sort>(() => readSort(drive));
-  const byRef = useRef(by);
-  byRef.current = by;
-  const sortRef = useRef(sort);
-  sortRef.current = sort;
+  // The Library keeps its tags while another face is open, so going back to
+  // it asks for nothing new; the array keeps its identity while its values do.
+  const urlTags = useMemo(
+    () => (url.view === "library" ? parseChosenTags(`?${search}`) : null),
+    [search, url.view],
+  );
+  const previousTags = useRef<string[]>([]);
+  const tags = useMemo(() => {
+    const next =
+      tagOverride !== null && tagOverride.from === search
+        ? tagOverride.tags
+        : (urlTags ?? libraryTags);
+    const previous = previousTags.current;
+    return sameTags(previous, next) ? previous : next;
+  }, [tagOverride, search, urlTags, libraryTags]);
+  previousTags.current = tags;
+  useEffect(() => {
+    if (tagOverride !== null && tagOverride.from !== search) setTagOverride(null);
+  }, [search, tagOverride]);
+  useEffect(() => {
+    if (url.view === "library" && !sameTags(libraryTags, tags)) setLibraryTags([...tags]);
+  }, [url.view, tags, libraryTags]);
+
+  const storedView = useMemo(
+    () => readTargetView(APP, drive, target.selectedId),
+    [drive, target.selectedId],
+  );
+  const legacyGroup = target.selectedId === "default" ? readLegacyGroup(drive, APP) : null;
+  const legacySort = target.selectedId === "default" ? readLegacySort(drive) : null;
+  const [viewChoice, setViewChoice] = useState<{
+    drive: string;
+    targetId: string;
+    view: TargetView;
+  } | null>(null);
+  const view = useMemo(() => {
+    const held =
+      viewChoice !== null && viewChoice.drive === drive && viewChoice.targetId === target.selectedId
+        ? { ...storedView, ...viewChoice.view }
+        : storedView;
+    const group =
+      offered(CLASSIFICATIONS, held.group) ??
+      offered(CLASSIFICATIONS, legacyGroup) ??
+      "month";
+    const sort = offered(SORTS, held.sort) ?? offered(SORTS, legacySort) ?? "newest";
+    return { group, sort } as { group: Classification; sort: Sort };
+  }, [viewChoice, drive, target.selectedId, storedView, legacyGroup, legacySort]);
+  const byRef = useRef(view.group);
+  byRef.current = view.group;
+  const sortRef = useRef(view.sort);
+  sortRef.current = view.sort;
+  const tagsRef = useRef(tags);
+  tagsRef.current = tags;
 
   const [notAvailable, setNotAvailable] = useState(false);
   // A write through any face's context menu. The faces stay mounted while
@@ -154,9 +241,14 @@ function Session({ drive }: { drive: string }) {
     };
   }, [drive, countsItself, countToken, target.ready, target.changes, target.params, target.fileIds]);
 
-  // A URL with no query is a fresh start however it was reached.
+  // A URL with no query is a fresh start however it was reached, and so is one
+  // whose only parameter is a Home shortcut's `target`.
   const [initial] = useState(() => {
-    if (search === "") {
+    const onlyTarget =
+      search !== "" &&
+      [...new URLSearchParams(search).keys()].every((key) => key === "target") &&
+      new URLSearchParams(search).has("target");
+    if (search === "" || onlyTarget) {
       clearState(drive);
       return { saved: {} as SavedState, listOpensFromUrl: false, view: url.view };
     }
@@ -175,8 +267,6 @@ function Session({ drive }: { drive: string }) {
   const libraryPages = useRef(0);
   const viewRef = useRef<View>(url.view);
   viewRef.current = url.view;
-  const searchRef = useRef(search);
-  searchRef.current = search;
   const ownTarget = useRef<string | null>(null);
 
   // The calendar's parameters are the last calendar URL's, kept while the
@@ -223,6 +313,7 @@ function Session({ drive }: { drive: string }) {
           scrollY: lastScrollY.current,
           by: byRef.current,
           sort: sortRef.current,
+          tags: [...tagsRef.current],
         };
       }
       // Switching between faces leaves the calendar's list where it was.
@@ -310,14 +401,24 @@ function Session({ drive }: { drive: string }) {
 
   const go = useCallback(
     (mode: "push" | "replace", next: Partial<PageUrl>) => {
-      const query = buildPageQuery(next);
+      let query = buildPageQuery(next);
+      // The page's own replaces keep the chosen tags and a pending id; a
+      // navigation (a tab) drops both, as the URL it names has neither.
+      if (mode === "replace") {
+        const params = new URLSearchParams(query);
+        if (next.view === "library") {
+          for (const tag of tagsRef.current) params.append("tag", tag);
+        }
+        if (target.pendingId !== null) params.set("target", target.pendingId);
+        query = `?${params.toString()}`;
+      }
       const nextSearch = new URLSearchParams(query).toString();
       ownTarget.current = nextSearch === searchRef.current ? null : nextSearch;
       const href = `${pathname}${query}`;
       if (mode === "push") router.push(href, { scroll: false });
       else router.replace(href, { scroll: false });
     },
-    [router, pathname],
+    [router, pathname, target.pendingId],
   );
 
   // A URL with no query, reached while the page stays mounted (the sidebar
@@ -343,6 +444,8 @@ function Session({ drive }: { drive: string }) {
     calendarUrl.current = { view: "calendar", month: null, date: null, undated: false };
     calendarFade.current = false;
     setNotAvailable(false);
+    setTagOverride(null);
+    setLibraryTags([]);
     setSeen({ library: true, calendar: false, map: false });
     setEpoch((value) => value + 1);
     setCountToken((value) => value + 1);
@@ -371,28 +474,102 @@ function Session({ drive }: { drive: string }) {
     go("replace", { view: "library" });
   }, [go]);
 
+  // A pending id leaves unwritten on another navigation; the page's own
+  // replaces carry it, so only a URL that no longer names it drops it.
+  useEffect(() => {
+    if (target.pendingId === null) return;
+    if (new URLSearchParams(search).get("target") !== target.pendingId) target.dropPending();
+  }, [search, target.pendingId, target.dropPending]);
+
   const selectView = (view: string) => {
     if (view === url.view) return;
     const kept = calendarParams.current;
     if (view === "map") go("push", { view: "map", ...kept });
-    else if (view === "library") go("push", { view: "library" });
-    else go("push", kept);
+    else if (view === "library") {
+      const params = new URLSearchParams({ view: "library" });
+      for (const tag of libraryTags) params.append("tag", tag);
+      router.push(`${pathname}?${params.toString()}`, { scroll: false });
+    } else go("push", kept);
   };
 
   const changeBy = useCallback(
     (value: Classification) => {
-      setBy(value);
-      writeClassification(drive, value);
+      writeTargetView(APP, drive, target.selectedId, { group: value });
+      setViewChoice((held) => ({
+        drive,
+        targetId: target.selectedId,
+        view: {
+          ...(held !== null && held.drive === drive && held.targetId === target.selectedId
+            ? held.view
+            : {}),
+          group: value,
+        },
+      }));
     },
-    [drive],
+    [drive, target.selectedId],
   );
   const changeSort = useCallback(
     (value: Sort) => {
-      setSort(value);
-      writeSort(drive, value);
+      writeTargetView(APP, drive, target.selectedId, { sort: value });
+      setViewChoice((held) => ({
+        drive,
+        targetId: target.selectedId,
+        view: {
+          ...(held !== null && held.drive === drive && held.targetId === target.selectedId
+            ? held.view
+            : {}),
+          sort: value,
+        },
+      }));
     },
-    [drive],
+    [drive, target.selectedId],
   );
+
+  // A Target choice drops the tag in the same replace; the chosen tags read as
+  // empty from it on, until the URL reflects the replace.
+  const chooseTarget = useCallback(
+    (id: string) => {
+      if (target.pendingId !== null) {
+        if (id === target.pendingId) return;
+      } else if (id === target.selectedId) {
+        // The row in force is not a choice: it saves the row the viewer picked
+        // (the saved id may still name a target that fell back) and keeps the tag.
+        target.choose(id);
+        return;
+      }
+      const params = new URLSearchParams(search);
+      params.delete("tag");
+      params.delete("target");
+      setTagOverride({ from: search, tags: [] });
+      setLibraryTags([]);
+      router.replace(`${pathname}${params.toString() ? `?${params.toString()}` : ""}`, {
+        scroll: false,
+      });
+      target.choose(id);
+    },
+    [search, pathname, router, target],
+  );
+
+  const replaceTags = useCallback(
+    (next: readonly string[]) => {
+      const params = new URLSearchParams(search);
+      params.delete("tag");
+      for (const tag of next) params.append("tag", tag);
+      setTagOverride({ from: search, tags: [...next] });
+      router.replace(`${pathname}?${params.toString()}`, { scroll: false });
+    },
+    [search, pathname, router],
+  );
+  const toggleTag = useCallback(
+    (name: string) => {
+      const held = tags.some((tag) => tag.toLowerCase() === name.toLowerCase());
+      replaceTags(
+        held ? tags.filter((tag) => tag.toLowerCase() !== name.toLowerCase()) : [...tags, name],
+      );
+    },
+    [tags, replaceTags],
+  );
+  const clearTags = useCallback(() => replaceTags([]), [replaceTags]);
   const onLibraryDepth = useCallback((pages: number) => {
     libraryPages.current = pages;
   }, []);
@@ -433,6 +610,7 @@ function Session({ drive }: { drive: string }) {
           target={{
             drive,
             app: { addon: "photo_diary" },
+            homeEntry: target.known ? "photo_diary" : undefined,
             name: target.lookingUp ? null : (target.name ?? t("allPhotos")),
             folders: target.folders,
             collections: { list: target.collections, retry: target.retryCollections },
@@ -443,7 +621,7 @@ function Session({ drive }: { drive: string }) {
             unavailableLabel: t("targetUnavailable"),
             defaultTargetTypes: ["image"],
             isUsable: target.isUsable,
-            onChoose: target.choose,
+            onChoose: chooseTarget,
             onRetryFolders: target.retryFolders,
           }}
         />
@@ -458,6 +636,7 @@ function Session({ drive }: { drive: string }) {
             fileIds={target.fileIds}
             targetId={target.selectedId}
             targetKey={target.changes}
+            targetKnown={target.known}
             ready={target.ready}
             targetFailed={target.failed}
             targetTooLarge={target.tooLarge}
@@ -465,10 +644,13 @@ function Session({ drive }: { drive: string }) {
             active={url.view === "library"}
             writeToken={writes}
             onWrite={noteWrite}
-            by={by}
-            sort={sort}
+            by={view.group}
+            sort={view.sort}
             onChangeBy={changeBy}
             onChangeSort={changeSort}
+            tags={tags}
+            onToggleTag={toggleTag}
+            onClearTags={clearTags}
             restore={libraryRestore.current}
             onRestored={libraryRestored}
             onDepth={onLibraryDepth}

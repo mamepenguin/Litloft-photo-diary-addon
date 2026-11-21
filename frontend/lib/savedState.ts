@@ -8,7 +8,7 @@ export type SavedState = {
   /** The target in force when the state was saved; absent counts as `default`. */
   target?: string;
   /** The Library's loaded depth, scroll and the choice it was recorded under. */
-  library?: { loaded: number; scrollY: number; by: string; sort: string };
+  library?: { loaded: number; scrollY: number; by: string; sort: string; tags?: string[] };
 };
 
 export type ShelfState = {
@@ -16,6 +16,7 @@ export type ShelfState = {
   key: string;
   sort: string;
   target: string;
+  tags?: string[];
   loaded: number;
   scrollY: number;
 };
@@ -55,6 +56,9 @@ function sanitize(raw: unknown): SavedState | null {
       scrollY: library.scrollY,
       by: library.by,
       sort: library.sort,
+      ...(Array.isArray(library.tags) && library.tags.every((tag) => typeof tag === "string")
+        ? { tags: library.tags as string[] }
+        : {}),
     };
   }
   return state;
@@ -73,7 +77,17 @@ function sanitizeShelf(raw: unknown): ShelfState | null {
   ) {
     return null;
   }
-  return { by: r.by, key: r.key, sort: r.sort, target: r.target, loaded: r.loaded, scrollY: r.scrollY };
+  return {
+    by: r.by,
+    key: r.key,
+    sort: r.sort,
+    target: r.target,
+    ...(Array.isArray(r.tags) && r.tags.every((tag) => typeof tag === "string")
+      ? { tags: r.tags as string[] }
+      : {}),
+    loaded: r.loaded,
+    scrollY: r.scrollY,
+  };
 }
 
 /** Never throws: when storage refuses, Back starts fresh. */
