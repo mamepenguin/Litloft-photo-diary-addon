@@ -469,7 +469,7 @@ function ShelfPhotos({
   return (
     <>
       {refreshFailed && <LoadError onRetry={onRefresh} />}
-      <FileGrid files={paged.files} moreMayFollow={paged.moreMayFollow} onRefresh={onRefresh} />
+      <FileGrid appCardMenu files={paged.files} moreMayFollow={paged.moreMayFollow} onRefresh={onRefresh} />
       <div ref={sentinel} aria-hidden="true" className="h-px" />
       {paged.more === "loading" && (
         <div className="mt-8">

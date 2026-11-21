@@ -450,7 +450,7 @@ function AllPhotos({
   return (
     <>
       {refreshFailed && <LoadError onRetry={onRefresh} />}
-      <FileGrid files={paged.files} moreMayFollow={paged.moreMayFollow} onRefresh={onWrite} />
+      <FileGrid appCardMenu files={paged.files} moreMayFollow={paged.moreMayFollow} onRefresh={onWrite} />
       <div ref={sentinel} aria-hidden="true" className="h-px" />
       {paged.more === "loading" && (
         <div className="mt-8">

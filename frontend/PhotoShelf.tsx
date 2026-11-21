@@ -102,7 +102,7 @@ export function PhotoShelf({
         </Link>
       </div>
       <div ref={host} className="overflow-hidden">
-        <FileGrid files={drawn} onRefresh={onRefresh} />
+        <FileGrid appCardMenu files={drawn} onRefresh={onRefresh} />
       </div>
     </section>
   );
